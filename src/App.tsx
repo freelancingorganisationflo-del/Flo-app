@@ -25,7 +25,8 @@ function RoleRedirect() {
   const { session, profile, loading } = useAuth();
   if (loading) return <PageSpinner />;
   if (!session) return <Navigate to="/login" replace />;
-  if (!profile) return <PageSpinner />;
+  // Profile missing means DB trigger hasn't run or schema isn't applied yet.
+  if (!profile) return <Navigate to="/login" replace />;
   return <Navigate to={profile.role === "admin" ? "/admin" : "/dashboard"} replace />;
 }
 

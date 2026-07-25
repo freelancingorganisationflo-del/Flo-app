@@ -18,10 +18,15 @@ export function Signup() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-    const { error } = await signUp(email, password, fullName);
-    setSubmitting(false);
-    if (error) setError(error);
-    else setDone(true);
+    try {
+      const { error } = await signUp(email, password, fullName);
+      if (error) setError(error);
+      else setDone(true);
+    } catch {
+      setError("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (done) {

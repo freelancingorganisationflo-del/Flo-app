@@ -22,7 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadProfile(userId: string) {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
-    if (!error) setProfile(data as Profile);
+    // If the profiles row doesn't exist yet (trigger lag or schema not applied),
+    // leave profile as null so callers can handle it gracefully.
+    if (!error && data) setProfile(data as Profile);
+    else setProfile(null);
   }
 
   useEffect(() => {

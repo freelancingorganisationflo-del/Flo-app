@@ -17,9 +17,14 @@ export function Login() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-    const { error } = await signIn(email, password);
-    setSubmitting(false);
-    if (error) setError(error);
+    try {
+      const { error } = await signIn(email, password);
+      if (error) setError(error);
+    } catch {
+      setError("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

@@ -9,7 +9,9 @@ export function ProtectedRoute({ children, requireRole }: { children: ReactNode;
 
   if (loading) return <PageSpinner />;
   if (!session) return <Navigate to="/login" replace />;
-  if (!profile) return <PageSpinner />;
+  // Profile missing means the DB trigger hasn't run or schema isn't applied yet.
+  // Redirect to login so the user isn't stuck on an infinite spinner.
+  if (!profile) return <Navigate to="/login" replace />;
   if (requireRole && profile.role !== requireRole) {
     return <Navigate to={profile.role === "admin" ? "/admin" : "/dashboard"} replace />;
   }
