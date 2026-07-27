@@ -20,6 +20,8 @@ import { AdminSubmissions } from "@/pages/admin/Submissions";
 import { AdminCheckins } from "@/pages/admin/Checkins";
 import { AdminResources } from "@/pages/admin/Resources";
 import { AdminLeaderboard } from "@/pages/admin/Leaderboard";
+import { AdminMemberDetail } from "@/pages/admin/MemberDetail";
+import { Profile } from "@/pages/member/Profile";
 
 function RoleRedirect() {
   const { session, profile, loading } = useAuth();
@@ -45,6 +47,7 @@ export function App() {
           <Route path="/checkins" element={<Checkins />} />
           <Route path="/resources" element={<Resources />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
 
         <Route element={<ProtectedRoute requireRole="admin"><AdminLayout /></ProtectedRoute>}>
@@ -55,6 +58,7 @@ export function App() {
           <Route path="/admin/checkins" element={<AdminCheckins />} />
           <Route path="/admin/resources" element={<AdminResources />} />
           <Route path="/admin/leaderboard" element={<AdminLeaderboard />} />
+          <Route path="/admin/members/:id" element={<AdminMemberDetail />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -37,7 +37,6 @@ export function AdminCurriculum() {
     );
   }
 
-  const activeSkill = skills.find((s) => s.id === activeSkillId);
   const activeModule = modules.find((m) => m.id === activeModuleId);
 
   return (

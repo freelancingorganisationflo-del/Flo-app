@@ -43,6 +43,11 @@ export interface Profile {
   status: MemberStatus;
   joined_at: string;
   created_at: string;
+  // Extended columns — require supabase/profile_extras.sql to be applied.
+  bio?: string | null;
+  instagram?: string | null;
+  linkedin?: string | null;
+  github?: string | null;
 }
 
 export interface Module {

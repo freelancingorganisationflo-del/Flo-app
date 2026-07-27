@@ -8,6 +8,7 @@ const navItems = [
   { to: "/checkins", icon: "📝", label: "Check-ins" },
   { to: "/resources", icon: "🧰", label: "Resources" },
   { to: "/leaderboard", icon: "🏆", label: "Leaderboard" },
+  { to: "/profile", icon: "👤", label: "Profile" },
 ];
 
 export function MemberLayout() {

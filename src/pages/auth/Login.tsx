@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Input, Label } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 
 export function Login() {

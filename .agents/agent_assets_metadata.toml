@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EUVWDr2nHCdokFTJOEivO"
+uri = "file://flo-app.zip"
+type = "unspecified"
+title = "FLO App — Source Code"

@@ -20,3 +20,5 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Storage bucket names — create these in Supabase Storage (see README).
 export const SUBMISSIONS_BUCKET = "assignment-submissions";
 export const NOTES_BUCKET = "module-notes";
+// Requires supabase/profile_extras.sql to be applied first.
+export const AVATARS_BUCKET = "avatars";

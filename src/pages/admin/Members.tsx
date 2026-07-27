@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMembers, useAssignMemberSkill, useUpdateMemberStatus } from "@/hooks/useMembers";
 import { useSkills } from "@/hooks/useSkills";
 import { Card } from "@/components/ui/Card";
@@ -65,7 +66,15 @@ export function AdminMembers() {
                     <div className="text-[14px] font-bold text-navy">{m.full_name}</div>
                     <div className="text-[11px] text-grey">{skillFull ? `${skillFull.icon} ${skillFull.label}` : "No skill assigned"}</div>
                   </div>
-                  <Badge label={m.status.replace("_", " ")} tone={statusTone[m.status]} />
+                  <div className="flex items-center gap-2">
+                    <Badge label={m.status.replace("_", " ")} tone={statusTone[m.status]} />
+                    <Link
+                      to={`/admin/members/${m.id}`}
+                      className="text-[11px] font-semibold text-teal hover:underline"
+                    >
+                      View →
+                    </Link>
+                  </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
