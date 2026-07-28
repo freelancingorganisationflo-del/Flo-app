@@ -1,5 +1,4 @@
-mkdir -p .github/workflows
-cat > .github/workflows/android-build.yml << 'EOF'
+
 name: Build Android APK
 on:
   push:
@@ -42,4 +41,3 @@ jobs:
         with:
           name: flo-app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-EOF
