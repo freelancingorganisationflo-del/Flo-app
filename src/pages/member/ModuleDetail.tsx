@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { VideoPlayer } from "@/components/ui/VideoPlayer";
 
 const statusTone = {
   pending: "orange",
@@ -83,12 +84,8 @@ export function ModuleDetail() {
             <div className="space-y-3">
               {lectures.map((l) => (
                 <div key={l.id}>
-                  <div className="mb-1 text-[13px] font-semibold text-navy">{l.title}</div>
-                  {l.video_url && (
-                    <a href={l.video_url} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-teal underline">
-                      Watch lecture ↗
-                    </a>
-                  )}
+                  <div className="mb-2 text-[13px] font-semibold text-navy">{l.title}</div>
+                  {l.video_url && <VideoPlayer url={l.video_url} title={l.title} />}
                 </div>
               ))}
             </div>
