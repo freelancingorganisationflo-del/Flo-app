@@ -141,9 +141,9 @@ export function ModuleDetail() {
               {latestSubmission?.status === "approved" ? (
                 <div className="text-[13px] font-semibold text-green">✓ Approved — next module unlocked.</div>
               ) : (
-                <div className="flex flex-wrap items-center gap-3">
-                  <input ref={fileRef} type="file" accept=".pdf,.zip,image/*,video/*" className="text-[13px]" />
-                  <Button onClick={() => void handleUpload()} disabled={submit.isPending}>
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                  <input ref={fileRef} type="file" accept=".pdf,.zip,image/*,video/*" className="w-full text-[13px] sm:w-auto" />
+                  <Button onClick={() => void handleUpload()} disabled={submit.isPending} className="sm:w-auto">
                     {submit.isPending ? "Uploading…" : latestSubmission ? "Resubmit" : "Submit assignment"}
                   </Button>
                 </div>

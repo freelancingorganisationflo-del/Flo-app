@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "danger" | "ghost";
+  fullWidth?: boolean;
 }
 
 const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
@@ -11,11 +12,11 @@ const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
   ghost: "bg-transparent text-grey hover:text-navy font-semibold",
 };
 
-export function Button({ variant = "primary", className = "", disabled, ...props }: ButtonProps) {
+export function Button({ variant = "primary", fullWidth = false, className = "", disabled, ...props }: ButtonProps) {
   return (
     <button
       disabled={disabled}
-      className={`rounded-[10px] px-4 py-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`rounded-[10px] px-4 py-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${fullWidth ? "w-full" : ""} ${variants[variant]} ${className}`}
       {...props}
     />
   );

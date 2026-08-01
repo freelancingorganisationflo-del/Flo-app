@@ -4,13 +4,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/Button";
 
 export function Login() {
-  const { signIn, session } = useAuth();
+  const { signIn, session, profile, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (session) return <Navigate to="/dashboard" replace />;
+  if (loading) return null;
+  if (session && profile) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

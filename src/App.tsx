@@ -1,6 +1,7 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { ProfilePending } from "@/components/layout/ProfilePending";
 import { MemberLayout } from "@/components/layout/MemberLayout";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -28,13 +29,13 @@ function RoleRedirect() {
   if (loading) return <PageSpinner />;
   if (!session) return <Navigate to="/login" replace />;
   // Profile missing means DB trigger hasn't run or schema isn't applied yet.
-  if (!profile) return <Navigate to="/login" replace />;
+  if (!profile) return <ProfilePending />;
   return <Navigate to={profile.role === "admin" ? "/admin" : "/dashboard"} replace />;
 }
 
 export function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<RoleRedirect />} />
         <Route path="/login" element={<Login />} />
@@ -63,6 +64,6 @@ export function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

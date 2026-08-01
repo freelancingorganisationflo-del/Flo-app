@@ -62,7 +62,7 @@ export function Dashboard() {
         sub={`${currentSkill?.icon ?? ""} ${currentSkill?.label ?? "Your track"} — here's where you stand.`}
       />
 
-      <div className="mb-6 flex flex-wrap gap-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-4">
         <StatCard label="Overall progress" value={`${overallPct}%`} sub={`${completedCount}/${modules.length} modules`} />
         <StatCard
           label="Current module"

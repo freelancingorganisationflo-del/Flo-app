@@ -37,11 +37,11 @@ function DashboardSkeleton() {
         <Sk className="h-4 w-32" />
       </div>
       {/* Stat cards */}
-      <div className="mb-6 flex flex-wrap gap-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-4">
         {[0, 1, 2, 3].map((i) => (
           <div
             key={i}
-            className="min-w-[140px] flex-1 rounded-card border border-border bg-white p-5"
+            className="min-w-[130px] flex-1 rounded-card border border-border bg-white p-4 sm:p-5"
           >
             <Sk className="mb-2 h-8 w-14" />
             <Sk className="mb-1.5 h-3 w-24" />
@@ -172,7 +172,7 @@ export function AdminDashboard() {
       <SectionHeader title="Admin Dashboard" sub="FLO at a glance." />
 
       {/* ── Existing: 4 stat cards ─────────────────────────────────────────── */}
-      <div className="mb-6 flex flex-wrap gap-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-4">
         <StatCard
           label="Total members"
           value={members.length}

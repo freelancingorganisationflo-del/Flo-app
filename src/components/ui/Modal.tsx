@@ -13,11 +13,11 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = "44
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-[rgba(5,13,24,0.8)] p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[999] flex items-end justify-center bg-[rgba(5,13,24,0.8)] p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full rounded-2xl border border-tealBorder bg-navy p-8"
+        className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-tealBorder bg-navy p-6 sm:rounded-2xl sm:p-8"
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >

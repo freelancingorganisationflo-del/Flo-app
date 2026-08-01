@@ -12,7 +12,7 @@ export function Sidebar({ navItems, footer }: { navItems: NavItem[]; footer?: Re
   const { profile, signOut } = useAuth();
 
   return (
-    <div className="flex h-screen w-[220px] shrink-0 flex-col overflow-hidden bg-navy2">
+    <div className="hidden h-screen w-[220px] shrink-0 flex-col overflow-hidden bg-navy2 lg:flex">
       {/* Logo */}
       <div className="border-b border-white/[0.06] px-[1.4rem] pb-4 pt-6">
         <div className="font-display text-2xl font-black leading-none tracking-tight text-white">

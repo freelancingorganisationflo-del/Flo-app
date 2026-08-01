@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/Button";
 
 export function Signup() {
-  const { signUp, session } = useAuth();
+  const { signUp, session, profile, loading } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,7 +12,8 @@ export function Signup() {
   const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  if (session) return <Navigate to="/dashboard" replace />;
+  if (loading) return null;
+  if (session && profile) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
