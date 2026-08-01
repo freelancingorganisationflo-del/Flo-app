@@ -1,4 +1,4 @@
-# FLO — Freelancing Learning Organisation
+# FLO —Freelancing Learning Organisation
 
 Private, membership-based learning platform. Members work through skill
 modules; each module's assignment must be admin-approved before the next
