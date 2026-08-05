@@ -16,6 +16,9 @@ import { Input, Label, Textarea } from "@/components/ui/FormField";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { VideoPlayer } from "@/components/ui/VideoPlayer";
+import { PlaylistLectures } from "@/components/ui/PlaylistLectures";
+import { getYouTubePlaylistId, isYouTubeConfigured } from "@/lib/youtube";
 
 export function AdminCurriculum() {
   const { data: skills = [], isLoading: skillsLoading } = useSkills();
@@ -180,8 +183,16 @@ function ModuleEditor({ moduleId, moduleTitle }: { moduleId: string; moduleTitle
         ) : (
           lectures.map((l) => (
             <div key={l.id} className="border-b border-border py-2 text-[13px] last:border-none">
-              <span className="font-semibold text-navy">{l.title}</span>{" "}
-              {l.video_url && <a href={l.video_url} className="text-teal underline" target="_blank" rel="noreferrer">link</a>}
+              <div className="font-semibold text-navy">{l.title}</div>
+              {l.video_url && (
+                <div className="mt-2">
+                  {isYouTubeConfigured && getYouTubePlaylistId(l.video_url) ? (
+                    <PlaylistLectures playlistId={getYouTubePlaylistId(l.video_url)!} url={l.video_url} title={l.title} />
+                  ) : (
+                    <VideoPlayer url={l.video_url} title={l.title} />
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

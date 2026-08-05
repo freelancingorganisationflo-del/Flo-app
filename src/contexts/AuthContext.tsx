@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { Profile } from "@/lib/types/database.types";
 
 interface AuthContextValue {
@@ -29,6 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
@@ -53,11 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signIn(email: string, password: string) {
+    if (!isSupabaseConfigured) {
+      return { error: "The FLO backend isn't connected yet. Add your Supabase credentials to the .env file and restart the app." };
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
   }
 
   async function signUp(email: string, password: string, fullName: string) {
+    if (!isSupabaseConfigured) {
+      return { error: "The FLO backend isn't connected yet. Add your Supabase credentials to the .env file and restart the app." };
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -67,10 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    if (!isSupabaseConfigured) return;
     await supabase.auth.signOut();
   }
 
   async function refreshProfile() {
+    if (!isSupabaseConfigured) return;
     if (session?.user) await loadProfile(session.user.id);
   }
 

@@ -12,6 +12,8 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
+import { PlaylistLectures } from "@/components/ui/PlaylistLectures";
+import { getYouTubePlaylistId, isYouTubeConfigured } from "@/lib/youtube";
 
 const statusTone = {
   pending: "orange",
@@ -85,7 +87,12 @@ export function ModuleDetail() {
               {lectures.map((l) => (
                 <div key={l.id}>
                   <div className="mb-2 text-[13px] font-semibold text-navy">{l.title}</div>
-                  {l.video_url && <VideoPlayer url={l.video_url} title={l.title} />}
+                  {l.video_url &&
+                    (isYouTubeConfigured && getYouTubePlaylistId(l.video_url) ? (
+                      <PlaylistLectures playlistId={getYouTubePlaylistId(l.video_url)!} url={l.video_url} title={l.title} />
+                    ) : (
+                      <VideoPlayer url={l.video_url} title={l.title} />
+                    ))}
                 </div>
               ))}
             </div>
