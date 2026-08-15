@@ -72,6 +72,11 @@ User message → LLM Gateway → Assistant reply
               └─ normal chat → replies normally
 ```
 
+Routing via LLM tool-calling — `search_memory`, `search_documents`, and task tools
+(`create_task`, `list_tasks`, etc.) are all available to the LLM on every message.
+The LLM itself decides which tool to call based on the user's intent — no
+keyword-matching.
+
 ### Memory store (`memories` table)
 
 | Field | Purpose |
@@ -82,14 +87,17 @@ User message → LLM Gateway → Assistant reply
 | `created_at` | timestamp |
 
 - When the user says something memorable, the assistant (via LLM) automatically
-  decides whether to save it to memory.
+  decides whether to save it to memory. The memory-save decision is a **tool-call
+  in the same LLM request** (e.g., `save_memory`) — no extra round-trip, which
+  keeps latency under control.
 - When replying, the assistant first searches relevant memories (semantic) and
   injects them into context.
 - Manual add/delete from the UI is also supported.
 
 ### Chat storage (`messages` table)
 
-- Full conversation history per user.
+- **No `conversations` table.** Full history is one continuous stream of messages
+  per user — no `conversation_id`, no session grouping.
 - Replies stream token-by-token (Server-Sent Events or WebSocket).
 
 ## Module 3 — Tasks & Reminders (production-ready)
@@ -123,6 +131,12 @@ User message → LLM Gateway → Assistant reply
   "reminded" flag).
 - Designed so it can be extracted later into a separate worker process
   (e.g., Celery/APScheduler) without changing the schema.
+
+**MVP limitation**: the worker is **single-instance** for now. If you scale to
+multiple app instances, each would run its own worker and the same reminder could
+fire more than once (duplicate notifications). Extracting to Celery/APScheduler
+(or adding a DB-level lock / `FOR UPDATE SKIP LOCKED`) becomes **required** before
+running more than one instance.
 
 ### Natural-language parsing (LLM tool-calling)
 
