@@ -9,3 +9,4 @@ FLO-v1.2.apk
 __pycache__/
 *.pyc
 .pytest_cache/
+helios/backend/helios.db
