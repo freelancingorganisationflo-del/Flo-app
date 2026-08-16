@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,23 @@ from ..llm_gateway.client import LLMClient
 from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
+from ..tasks.service import (
+    complete_task as complete_task_service,
+    create_task as create_task_service,
+    delete_task as delete_task_service,
+    list_tasks as list_tasks_service,
+    update_task as update_task_service,
+)
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
 
 OUT_OF_STEPS_MESSAGE = (
     "I ran out of steps trying to help with that. Please try rephrasing."
@@ -22,6 +40,15 @@ SYSTEM_PROMPT = (
     "before, or when recalling a stored fact would help answer.\n"
     "- save_memory: call when the user shares a personal fact, preference, or "
     "detail worth remembering for future conversations.\n\n"
+    "You also manage the user's tasks and reminders:\n"
+    "- create_task: parse the title, due date, and recurrence from the user's "
+    "request. ALWAYS confirm the parsed details with the user before calling "
+    "this tool.\n"
+    "- list_tasks: call when the user asks what tasks or reminders are pending "
+    "or what's on their plate.\n"
+    "- complete_task: call when the user says they finished a task.\n"
+    "- update_task: call to change a task's details.\n"
+    "- delete_task: call to remove a task.\n\n"
     "When you use a tool, keep your final answer short and natural."
 )
 
@@ -40,6 +67,81 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         embedding = await llm.embed(content)
         mem = await add_memory(db, user_id, content, embedding)
         return json.dumps({"saved": True, "id": mem.id})
+
+    async def create_task_handler(
+        title: str,
+        notes: str | None = None,
+        due_at: str | None = None,
+        priority: str = "medium",
+        reminder_at: str | None = None,
+        recurrence: dict | None = None,
+    ) -> str:
+        task = await create_task_service(
+            db,
+            user_id,
+            title,
+            notes=notes,
+            due_at=_parse_dt(due_at),
+            priority=priority,
+            reminder_at=_parse_dt(reminder_at),
+            recurrence=recurrence,
+        )
+        return json.dumps({"created": True, "id": task.id, "title": task.title})
+
+    async def list_tasks_handler(task_status: str | None = None) -> str:
+        tasks = await list_tasks_service(db, user_id, task_status)
+        return json.dumps(
+            [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status,
+                    "due_at": t.due_at.isoformat() if t.due_at else None,
+                    "reminder_at": t.reminder_at.isoformat() if t.reminder_at else None,
+                }
+                for t in tasks
+            ]
+        )
+
+    async def complete_task_handler(task_id: int) -> str:
+        task = await complete_task_service(db, user_id, task_id)
+        if task is None:
+            return json.dumps({"completed": False, "error": "task not found"})
+        return json.dumps({"completed": True, "id": task.id})
+
+    async def update_task_handler(
+        task_id: int,
+        title: str | None = None,
+        notes: str | None = None,
+        due_at: str | None = None,
+        priority: str | None = None,
+        task_status: str | None = None,
+        reminder_at: str | None = None,
+        recurrence: dict | None = None,
+    ) -> str:
+        fields: dict = {}
+        if title is not None:
+            fields["title"] = title
+        if notes is not None:
+            fields["notes"] = notes
+        if due_at is not None:
+            fields["due_at"] = _parse_dt(due_at)
+        if priority is not None:
+            fields["priority"] = priority
+        if task_status is not None:
+            fields["status"] = task_status
+        if reminder_at is not None:
+            fields["reminder_at"] = _parse_dt(reminder_at)
+        if recurrence is not None:
+            fields["recurrence"] = recurrence
+        task = await update_task_service(db, user_id, task_id, **fields)
+        if task is None:
+            return json.dumps({"updated": False, "error": "task not found"})
+        return json.dumps({"updated": True, "id": task.id, "title": task.title})
+
+    async def delete_task_handler(task_id: int) -> str:
+        deleted = await delete_task_service(db, user_id, task_id)
+        return json.dumps({"deleted": deleted, "id": task_id})
 
     registry.register(
         Tool(
@@ -63,6 +165,90 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
                 "required": ["content"],
             },
             handler=save_memory_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="create_task",
+            description="Create a task or reminder for the user.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "The task title"},
+                    "notes": {"type": "string", "description": "Optional details"},
+                    "due_at": {"type": "string", "description": "ISO 8601 due datetime"},
+                    "priority": {"enum": ["high", "medium", "low"]},
+                    "reminder_at": {"type": "string", "description": "ISO 8601 reminder datetime"},
+                    "recurrence": {
+                        "type": "object",
+                        "description": 'e.g. {"freq": "weekly", "by_day": [1], "time": "08:00"}',
+                    },
+                },
+                "required": ["title"],
+            },
+            handler=create_task_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="list_tasks",
+            description="List the user's tasks.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "task_status": {
+                        "type": "string",
+                        "enum": ["pending", "done", "cancelled"],
+                        "description": "Filter by status",
+                    }
+                },
+            },
+            handler=list_tasks_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="complete_task",
+            description="Mark a task as done.",
+            parameters={
+                "type": "object",
+                "properties": {"task_id": {"type": "integer"}},
+                "required": ["task_id"],
+            },
+            handler=complete_task_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="update_task",
+            description="Update a task's details.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer"},
+                    "title": {"type": "string"},
+                    "notes": {"type": "string"},
+                    "due_at": {"type": "string"},
+                    "priority": {"enum": ["high", "medium", "low"]},
+                    "task_status": {"enum": ["pending", "done", "cancelled"]},
+                    "reminder_at": {"type": "string"},
+                    "recurrence": {"type": "object"},
+                },
+                "required": ["task_id"],
+            },
+            handler=update_task_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="delete_task",
+            description="Delete a task.",
+            parameters={
+                "type": "object",
+                "properties": {"task_id": {"type": "integer"}},
+                "required": ["task_id"],
+            },
+            handler=delete_task_handler,
         )
     )
     return registry
