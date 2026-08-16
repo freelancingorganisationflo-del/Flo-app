@@ -46,6 +46,29 @@ def test_monthly_clamps_short_months():
     assert next_occurrence(rule, after) == datetime(2026, 2, 28, 0, 0)
 
 
+def test_daily_same_day_before_time():
+    after = datetime(2026, 8, 16, 8, 0)
+    rule = {"freq": "daily", "time": "09:00"}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 16, 9, 0)
+
+
+def test_weekly_interval_skips_weeks():
+    after = datetime(2026, 8, 17, 9, 0)  # Monday
+    rule = {"freq": "weekly", "by_day": [1], "time": "08:00", "interval": 2}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 31, 8, 0)
+
+
+def test_weekly_without_by_day_raises():
+    with pytest.raises(ValueError):
+        next_occurrence({"freq": "weekly"}, datetime(2026, 8, 17, 9, 0))
+
+
+def test_monthly_same_day_before_time():
+    after = datetime(2026, 8, 16, 8, 0)
+    rule = {"freq": "monthly", "by_day": [16], "time": "09:00"}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 16, 9, 0)
+
+
 def test_unsupported_freq_raises():
     with pytest.raises(ValueError):
         next_occurrence({"freq": "yearly"}, datetime(2026, 1, 1))
