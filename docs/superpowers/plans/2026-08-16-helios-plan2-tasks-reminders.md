@@ -285,25 +285,29 @@ def next_occurrence(recurrence: dict, after: datetime) -> datetime:
 
 def _next_daily(recurrence, after):
     when = _clock_time(recurrence)
-    day = after.date() + timedelta(days=max(1, int(recurrence.get("interval", 1))))
-    return datetime.combine(day, when, tzinfo=after.tzinfo)
+    interval = max(1, int(recurrence.get("interval", 1)))
+    day = after.date()
+    while True:
+        candidate = datetime.combine(day, when, tzinfo=after.tzinfo)
+        if candidate > after:
+            return candidate
+        day += timedelta(days=interval)
 
 
 def _next_weekly(recurrence, after):
-    targets = {_WEEKDAYS[d] for d in _by_day(recurrence) if d in _WEEKDAYS}
+    targets = sorted({_WEEKDAYS[d] for d in _by_day(recurrence) if d in _WEEKDAYS})
+    if not targets:
+        raise ValueError("weekly recurrence requires at least one by_day")
     when = _clock_time(recurrence)
-    today = after.date()
-    if today.weekday() in targets and (after.hour, after.minute) < (when.hour, when.minute):
-        return datetime.combine(today, when, tzinfo=after.tzinfo)
-    day = today + timedelta(days=1)
-    advanced = 1
-    while day.weekday() not in targets:
-        day += timedelta(days=1)
-        advanced += 1
     interval = max(1, int(recurrence.get("interval", 1)))
-    if (advanced - 1) // 7 % interval != 0:
-        day += timedelta(days=7 * (interval - ((advanced - 1) // 7 % interval)))
-    return datetime.combine(day, when, tzinfo=after.tzinfo)
+    day = after.date()
+    anchor = day.toordinal() // 7
+    while True:
+        if day.weekday() in targets and (day.toordinal() // 7 - anchor) % interval == 0:
+            candidate = datetime.combine(day, when, tzinfo=after.tzinfo)
+            if candidate > after:
+                return candidate
+        day += timedelta(days=1)
 
 
 def _next_monthly(recurrence, after):
@@ -311,7 +315,7 @@ def _next_monthly(recurrence, after):
     day = max(1, min(31, int(by_day[0] if by_day else after.day)))
     interval = max(1, int(recurrence.get("interval", 1)))
     when = _clock_time(recurrence)
-    year, month = _add_months(after.year, after.month, interval)
+    year, month = after.year, after.month
     for _ in range(interval * 2 + 1):
         last_day = calendar.monthrange(year, month)[1]
         candidate = datetime.combine(
@@ -393,6 +397,29 @@ def test_monthly_clamps_short_months():
     assert next_occurrence(rule, after) == datetime(2026, 2, 28, 0, 0)
 
 
+def test_daily_same_day_before_time():
+    after = datetime(2026, 8, 16, 8, 0)
+    rule = {"freq": "daily", "time": "09:00"}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 16, 9, 0)
+
+
+def test_weekly_interval_skips_weeks():
+    after = datetime(2026, 8, 17, 9, 0)  # Monday
+    rule = {"freq": "weekly", "by_day": [1], "time": "08:00", "interval": 2}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 31, 8, 0)
+
+
+def test_weekly_without_by_day_raises():
+    with pytest.raises(ValueError):
+        next_occurrence({"freq": "weekly"}, datetime(2026, 8, 17, 9, 0))
+
+
+def test_monthly_same_day_before_time():
+    after = datetime(2026, 8, 16, 8, 0)
+    rule = {"freq": "monthly", "by_day": [16], "time": "09:00"}
+    assert next_occurrence(rule, after) == datetime(2026, 8, 16, 9, 0)
+
+
 def test_unsupported_freq_raises():
     with pytest.raises(ValueError):
         next_occurrence({"freq": "yearly"}, datetime(2026, 1, 1))
@@ -401,7 +428,7 @@ def test_unsupported_freq_raises():
 - [ ] **Step 3: Run the tests**
 
 Run: `cd /workspace/helios/backend && python3 -m pytest tests/test_recurrence.py -v`
-Expected: 8 passed.
+Expected: 12 passed.
 
 - [ ] **Step 4: Commit**
 
