@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     memory_top_k: int = 5
 
+    reminder_poll_seconds: float = 30.0
+
     @field_validator("jwt_secret")
     @classmethod
     def _jwt_secret_must_be_strong(cls, v: str) -> str:
