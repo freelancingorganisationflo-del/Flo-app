@@ -1,10 +1,11 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, get_llm
-from ..llm_gateway.client import LLMClient
+from ..llm_gateway.client import LLMClient, LLMProviderError
 from ..models import User
 from .service import add_memory, delete_memory, list_memories
 
@@ -22,7 +23,13 @@ async def create_memory(
     db: AsyncSession = Depends(get_db),
     llm: LLMClient = Depends(get_llm),
 ) -> dict:
-    embedding = await llm.embed(req.content)
+    try:
+        embedding = await llm.embed(req.content)
+    except (LLMProviderError, httpx.HTTPError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM service unavailable: {exc}",
+        ) from exc
     mem = await add_memory(db, user.id, req.content, embedding)
     return {"id": mem.id, "content": mem.content}
 

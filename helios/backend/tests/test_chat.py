@@ -1,21 +1,27 @@
 import json
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.chat.service import stream_chat
 from app.deps import get_llm
 from app.llm_gateway.client import ChatResult, LLMClient, ToolCall
 from app.main import app
-from app.models import Memory
+from app.models import Memory, Message, User
 
 
 class FakeLLM(LLMClient):
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[list[dict]] = []
+        self.fail = False
+        self.fail_embed = False
 
     async def complete(self, messages, tools=None):
         self.calls.append(messages)
+        if self.fail:
+            raise RuntimeError("boom")
         last = messages[-1]
         if last["role"] == "user" and "remember" in last["content"].lower():
             return ChatResult(
@@ -43,6 +49,30 @@ class FakeLLM(LLMClient):
             content=f"Echo: {last['content']}",
             tool_calls=[],
             assistant_message={"role": "assistant", "content": f"Echo: {last['content']}"},
+        )
+
+    async def embed(self, text):
+        if self.fail_embed:
+            raise RuntimeError("embed boom")
+        return [1.0, 0.0]
+
+
+class LoopExhaustLLM(LLMClient):
+    async def complete(self, messages, tools=None):
+        return ChatResult(
+            content=None,
+            tool_calls=[ToolCall(id="call_x", name="save_memory", arguments='{"content": "spam"}')],
+            assistant_message={
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "save_memory", "arguments": '{"content": "spam"}'},
+                    }
+                ],
+            },
         )
 
     async def embed(self, text):
@@ -109,3 +139,37 @@ async def test_chat_stream_emits_delta_and_done(authed_client, fake_llm):
     events = [json.loads(line[len("data: ") :]) for line in body.splitlines() if line.startswith("data: ")]
     assert any(e["type"] == "delta" for e in events)
     assert events[-1]["type"] == "done"
+
+
+async def test_chat_llm_failure_persists_no_messages(authed_client, fake_llm, db_session):
+    client, headers = authed_client
+    fake_llm.fail = True
+    resp = await client.post("/api/chat", json={"message": "hello"}, headers=headers)
+    assert resp.status_code == 500
+    rows = (await db_session.execute(select(Message))).scalars().all()
+    assert len(rows) == 0
+
+
+async def test_stream_chat_llm_failure_persists_no_messages(authed_client, fake_llm, db_session):
+    fake_llm.fail = True
+    user = (
+        await db_session.execute(select(User).where(User.email == "u@h.com"))
+    ).scalars().one()
+    with pytest.raises(RuntimeError):
+        async for _ in stream_chat(db_session, user, "hello", fake_llm):
+            pass
+    rows = (await db_session.execute(select(Message))).scalars().all()
+    assert len(rows) == 0
+
+
+async def test_chat_tool_loop_exhaustion_persists_no_messages(authed_client, db_session):
+    client, headers = authed_client
+    app.dependency_overrides[get_llm] = lambda: LoopExhaustLLM()
+    try:
+        resp = await client.post("/api/chat", json={"message": "hi"}, headers=headers)
+    finally:
+        app.dependency_overrides.pop(get_llm, None)
+    assert resp.status_code == 200
+    assert "ran out of steps" in resp.json()["reply"]
+    rows = (await db_session.execute(select(Message))).scalars().all()
+    assert len(rows) == 0

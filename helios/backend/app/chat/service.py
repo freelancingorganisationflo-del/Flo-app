@@ -10,6 +10,10 @@ from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
 
+OUT_OF_STEPS_MESSAGE = (
+    "I ran out of steps trying to help with that. Please try rephrasing."
+)
+
 SYSTEM_PROMPT = (
     "You are Helios, a personal AI assistant. Be warm, concise, and helpful.\n\n"
     "You have tools to look up stored facts about the user and save new facts "
@@ -85,22 +89,6 @@ async def recent_history(db: AsyncSession, user_id: int, limit: int = 20) -> lis
     ]
 
 
-async def save_user_message(db: AsyncSession, user_id: int, content: str) -> Message:
-    msg = Message(user_id=user_id, role="user", content=content)
-    db.add(msg)
-    await db.commit()
-    await db.refresh(msg)
-    return msg
-
-
-async def save_assistant_message(db: AsyncSession, user_id: int, content: str) -> Message:
-    msg = Message(user_id=user_id, role="assistant", content=content)
-    db.add(msg)
-    await db.commit()
-    await db.refresh(msg)
-    return msg
-
-
 async def _run_tool_loop(
     db: AsyncSession,
     user_id: int,
@@ -128,31 +116,49 @@ async def _run_tool_loop(
         break
 
     if final is None:
-        final = "I ran out of steps trying to help with that. Please try rephrasing."
+        final = OUT_OF_STEPS_MESSAGE
+    return final, tool_events
+
+
+async def _run_and_persist(
+    db: AsyncSession, user: User, user_message: str, llm: LLMClient
+) -> tuple[str, list[dict]]:
+    history = await recent_history(db, user.id)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *history,
+        {"role": "user", "content": user_message},
+    ]
+    registry = build_registry(db, user.id, llm)
+    try:
+        final, tool_events = await _run_tool_loop(db, user.id, messages, registry, llm)
+    except Exception:
+        await db.rollback()
+        raise
+    # On tool-loop exhaustion the assistant text is a fallback, not a real
+    # reply, so persist nothing rather than orphan the user message.
+    if final == OUT_OF_STEPS_MESSAGE:
+        return final, tool_events
+    db.add_all(
+        [
+            Message(user_id=user.id, role="user", content=user_message),
+            Message(user_id=user.id, role="assistant", content=final),
+        ]
+    )
+    await db.commit()
     return final, tool_events
 
 
 async def run_chat(
     db: AsyncSession, user: User, user_message: str, llm: LLMClient
 ) -> tuple[str, list[dict]]:
-    await save_user_message(db, user.id, user_message)
-    history = await recent_history(db, user.id)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
-    registry = build_registry(db, user.id, llm)
-    final, tool_events = await _run_tool_loop(db, user.id, messages, registry, llm)
-    await save_assistant_message(db, user.id, final)
-    return final, tool_events
+    return await _run_and_persist(db, user, user_message, llm)
 
 
 async def stream_chat(
     db: AsyncSession, user: User, user_message: str, llm: LLMClient
 ):
-    await save_user_message(db, user.id, user_message)
-    history = await recent_history(db, user.id)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
-    registry = build_registry(db, user.id, llm)
-    final, tool_events = await _run_tool_loop(db, user.id, messages, registry, llm)
-    await save_assistant_message(db, user.id, final)
+    final, tool_events = await _run_and_persist(db, user, user_message, llm)
 
     for event in tool_events:
         yield {"type": "tool", "name": event["name"]}

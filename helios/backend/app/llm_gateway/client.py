@@ -1,4 +1,3 @@
-import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,64 +20,99 @@ class ChatResult:
     assistant_message: dict[str, Any] | None = None
 
 
+class LLMProviderError(RuntimeError):
+    pass
+
+
+def _provider_error_message(status_code: int, data: Any) -> str:
+    error = data.get("error") if isinstance(data, dict) else None
+    detail = error.get("message") if isinstance(error, dict) else None
+    if isinstance(detail, str) and detail:
+        return f"LLM provider error ({status_code}): {detail}"
+    return f"LLM provider error ({status_code}): {data}"
+
+
 class LLMClient:
-    def __init__(self) -> None:
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.api_key = settings.user_llm_api_key
         self.base_url = settings.user_llm_base_url.rstrip("/")
         self.model = settings.user_llm_model
         self.embedding_model = settings.user_llm_embedding_model
         self.timeout = settings.llm_timeout_seconds
+        self._transport = transport
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     async def complete(self, messages: list[dict], tools: list[dict] | None = None) -> ChatResult:
         if not self.api_key:
-            raise RuntimeError("USER_LLM_API_KEY is not configured")
+            raise LLMProviderError("USER_LLM_API_KEY is not configured")
         payload: dict[str, Any] = {"model": self.model, "messages": messages}
         if tools:
             payload["tools"] = tools
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions", json=payload, headers=self._headers()
             )
-            resp.raise_for_status()
             data = resp.json()
 
-        choice = data["choices"][0]["message"]
-        message: dict[str, Any] = {"role": "assistant", "content": choice.get("content")}
+        if resp.status_code != 200:
+            raise LLMProviderError(_provider_error_message(resp.status_code, data))
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise LLMProviderError(
+                "LLM provider returned an unexpected response: missing 'choices'"
+            )
+        choice_msg = choices[0].get("message") or {}
+        message: dict[str, Any] = {"role": "assistant", "content": choice_msg.get("content")}
         tool_calls: list[ToolCall] = []
-        if choice.get("tool_calls"):
-            message["tool_calls"] = [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["function"]["name"],
-                        "arguments": tc["function"].get("arguments") or "{}",
-                    },
-                }
-                for tc in choice["tool_calls"]
-            ]
-            tool_calls = [
-                ToolCall(
-                    id=tc["id"],
-                    name=tc["function"]["name"],
-                    arguments=tc["function"].get("arguments") or "{}",
+        raw_tool_calls = choice_msg.get("tool_calls")
+        if raw_tool_calls:
+            normalized: list[dict[str, Any]] = []
+            for tc in raw_tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                function = tc.get("function") or {}
+                call_id = tc.get("id")
+                name = function.get("name")
+                if call_id is None or name is None:
+                    continue
+                arguments = function.get("arguments") or "{}"
+                normalized.append(
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }
                 )
-                for tc in choice["tool_calls"]
-            ]
-        return ChatResult(content=choice.get("content"), tool_calls=tool_calls, assistant_message=message)
+                tool_calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
+            if normalized:
+                message["tool_calls"] = normalized
+        return ChatResult(
+            content=choice_msg.get("content"), tool_calls=tool_calls, assistant_message=message
+        )
 
     async def embed(self, text: str) -> list[float]:
         if not self.api_key:
-            raise RuntimeError("USER_LLM_API_KEY is not configured")
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            raise LLMProviderError("USER_LLM_API_KEY is not configured")
+        async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/embeddings",
                 json={"model": self.embedding_model, "input": text},
                 headers=self._headers(),
             )
-            resp.raise_for_status()
             data = resp.json()
-        return data["data"][0]["embedding"]
+
+        if resp.status_code != 200:
+            raise LLMProviderError(_provider_error_message(resp.status_code, data))
+        embeddings = data.get("data")
+        if not isinstance(embeddings, list) or not embeddings:
+            raise LLMProviderError(
+                "LLM provider returned an unexpected response: missing 'data'"
+            )
+        embedding = embeddings[0].get("embedding")
+        if not isinstance(embedding, list):
+            raise LLMProviderError(
+                "LLM provider returned an unexpected response: missing embedding"
+            )
+        return embedding

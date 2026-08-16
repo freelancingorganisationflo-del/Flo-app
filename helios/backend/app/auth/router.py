@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -33,7 +34,11 @@ async def signup(req: SignupRequest, db: AsyncSession = Depends(get_db)) -> Toke
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     user = User(email=req.email.lower(), password_hash=hash_password(req.password))
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     await db.refresh(user)
     return TokenResponse(access_token=create_access_token(user.id))
 

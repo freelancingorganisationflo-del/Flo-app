@@ -1,3 +1,9 @@
+import os
+
+# app.config.Settings validates the JWT secret and fails fast on the weak
+# "change-me" default; give tests a strong secret before any app import.
+os.environ.setdefault("JWT_SECRET", "test-secret-" + "x" * 40)
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -28,7 +34,7 @@ async def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()

@@ -26,5 +26,5 @@ def decode_token(token: str) -> int | None:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         return int(payload["sub"])
-    except jwt.PyJWTError:
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         return None
