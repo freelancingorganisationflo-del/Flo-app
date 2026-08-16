@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,13 +8,18 @@ from .chat.router import router as chat_router
 from .db import Base, engine
 from .memory.router import router as memory_router
 from .tasks.router import router as tasks_router
+from .tasks.worker import run_reminder_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(run_reminder_worker(stop_event))
     yield
+    stop_event.set()
+    await worker_task
 
 
 app = FastAPI(title="Helios", version="0.1.0", lifespan=lifespan)
