@@ -1,8 +1,8 @@
 # Helios — Personal Assistant AI
 
-Backend (Plan 1): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
-Chat + Memory. Frontend (PWA) and Tasks / RAG / Voice modules come in later
-plans.
+Backend (Plans 1-2): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
+Chat + Memory + Tasks & Reminders. Frontend (PWA) and RAG / Voice modules
+come in later plans.
 
 ## Run locally
 
@@ -25,6 +25,12 @@ Open http://localhost:8000/docs for the interactive API browser.
 - `DELETE /api/memory/{id}` — delete a memory
 - `POST /api/chat` — send a message, get JSON reply
 - `POST /api/chat/stream` — send a message, get SSE stream (tool + delta + done events)
+- `POST   /api/tasks` — create a task/reminder (201)
+- `GET    /api/tasks` — list tasks (optional `?status=pending|done|cancelled`)
+- `GET    /api/tasks/{id}` — get one task
+- `PATCH  /api/tasks/{id}` — partially update a task
+- `POST   /api/tasks/{id}/complete` — mark a task done
+- `DELETE /api/tasks/{id}` — delete a task (204)
 
 ## Tests
 
