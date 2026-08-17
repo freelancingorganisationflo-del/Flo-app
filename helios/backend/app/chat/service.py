@@ -14,6 +14,7 @@ from ..tasks.service import (
     complete_task as complete_task_service,
     create_task as create_task_service,
     delete_task as delete_task_service,
+    ensure_utc,
     list_tasks as list_tasks_service,
     update_task as update_task_service,
 )
@@ -23,7 +24,7 @@ def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        return ensure_utc(datetime.fromisoformat(value))
     except ValueError:
         return None
 
@@ -76,14 +77,20 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         reminder_at: str | None = None,
         recurrence: dict | None = None,
     ) -> str:
+        due_at_dt = _parse_dt(due_at) if due_at is not None else None
+        if due_at is not None and due_at_dt is None:
+            return json.dumps({"created": False, "error": f"invalid due_at: {due_at!r}"})
+        reminder_at_dt = _parse_dt(reminder_at) if reminder_at is not None else None
+        if reminder_at is not None and reminder_at_dt is None:
+            return json.dumps({"created": False, "error": f"invalid reminder_at: {reminder_at!r}"})
         task = await create_task_service(
             db,
             user_id,
             title,
             notes=notes,
-            due_at=_parse_dt(due_at),
+            due_at=due_at_dt,
             priority=priority,
-            reminder_at=_parse_dt(reminder_at),
+            reminder_at=reminder_at_dt,
             recurrence=recurrence,
         )
         return json.dumps({"created": True, "id": task.id, "title": task.title})
@@ -120,18 +127,26 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         recurrence: dict | None = None,
     ) -> str:
         fields: dict = {}
+        if due_at is not None:
+            due_at_dt = _parse_dt(due_at)
+            if due_at_dt is None:
+                return json.dumps({"updated": False, "error": f"invalid due_at: {due_at!r}"})
+            fields["due_at"] = due_at_dt
+        if reminder_at is not None:
+            reminder_at_dt = _parse_dt(reminder_at)
+            if reminder_at_dt is None:
+                return json.dumps(
+                    {"updated": False, "error": f"invalid reminder_at: {reminder_at!r}"}
+                )
+            fields["reminder_at"] = reminder_at_dt
         if title is not None:
             fields["title"] = title
         if notes is not None:
             fields["notes"] = notes
-        if due_at is not None:
-            fields["due_at"] = _parse_dt(due_at)
         if priority is not None:
             fields["priority"] = priority
         if task_status is not None:
             fields["status"] = task_status
-        if reminder_at is not None:
-            fields["reminder_at"] = _parse_dt(reminder_at)
         if recurrence is not None:
             fields["recurrence"] = recurrence
         task = await update_task_service(db, user_id, task_id, **fields)
@@ -141,7 +156,9 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
 
     async def delete_task_handler(task_id: int) -> str:
         deleted = await delete_task_service(db, user_id, task_id)
-        return json.dumps({"deleted": deleted, "id": task_id})
+        if not deleted:
+            return json.dumps({"deleted": False, "error": "task not found", "id": task_id})
+        return json.dumps({"deleted": True, "id": task_id})
 
     registry.register(
         Tool(

@@ -1,3 +1,5 @@
+import json
+
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -12,42 +14,44 @@ class TaskLLM(LLMClient):
         super().__init__()
         self.calls: list[list[dict]] = []
         self.schemas: list[list[dict]] = []
+        self.pending_tool: tuple[str, str] | None = None
+
+    def _tool_result(self, name: str, arguments: str) -> ChatResult:
+        return ChatResult(
+            content=None,
+            tool_calls=[ToolCall(id="call_t", name=name, arguments=arguments)],
+            assistant_message={
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_t",
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }
+                ],
+            },
+        )
 
     async def complete(self, messages, tools=None):
         self.calls.append(messages)
         if tools:
             self.schemas.append(tools)
         last = messages[-1]
-        if last["role"] == "user" and "create a task" in last["content"].lower():
-            return ChatResult(
-                content=None,
-                tool_calls=[
-                    ToolCall(
-                        id="call_t",
-                        name="create_task",
-                        arguments='{"title": "call Ravi", "priority": "high", "reminder_at": "2026-08-17T08:00:00"}',
-                    )
-                ],
-                assistant_message={
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": "call_t",
-                            "type": "function",
-                            "function": {
-                                "name": "create_task",
-                                "arguments": '{"title": "call Ravi", "priority": "high", "reminder_at": "2026-08-17T08:00:00"}',
-                            },
-                        }
-                    ],
-                },
-            )
         if last["role"] == "tool":
             return ChatResult(
                 content="Created the task for you.",
                 tool_calls=[],
                 assistant_message={"role": "assistant", "content": "Created the task for you."},
+            )
+        if self.pending_tool is not None:
+            name, arguments = self.pending_tool
+            self.pending_tool = None
+            return self._tool_result(name, arguments)
+        if last["role"] == "user" and "create a task" in last["content"].lower():
+            return self._tool_result(
+                "create_task",
+                '{"title": "call Ravi", "priority": "high", "reminder_at": "2026-08-17T08:00:00"}',
             )
         return ChatResult(
             content=f"Echo: {last['content']}",
@@ -95,3 +99,31 @@ async def test_chat_registry_exposes_all_task_tools(authed_client, task_llm):
     schema = task_llm.schemas[0]
     names = [t["function"]["name"] for t in schema]
     assert names[-5:] == ["create_task", "list_tasks", "complete_task", "update_task", "delete_task"]
+
+
+async def test_chat_create_task_rejects_invalid_datetime(authed_client, task_llm, db_session):
+    client, headers = authed_client
+    task_llm.pending_tool = ("create_task", '{"title": "bad", "reminder_at": "not-a-date"}')
+    resp = await client.post("/api/chat", json={"message": "make a task"}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["tool_events"][0]["name"] == "create_task"
+    tasks = (await db_session.execute(select(Task))).scalars().all()
+    assert len(tasks) == 0
+    assert len(task_llm.calls) >= 1
+    tool_msgs = [m for m in task_llm.calls[-1] if m.get("role") == "tool"]
+    assert len(tool_msgs) == 1
+    payload = json.loads(tool_msgs[-1]["content"])
+    assert payload["created"] is False
+    assert "error" in payload
+
+
+async def test_chat_delete_missing_task_returns_error(authed_client, task_llm):
+    client, headers = authed_client
+    task_llm.pending_tool = ("delete_task", '{"task_id": 999}')
+    resp = await client.post("/api/chat", json={"message": "delete it"}, headers=headers)
+    assert resp.status_code == 200
+    tool_msgs = [m for m in task_llm.calls[-1] if m.get("role") == "tool"]
+    assert len(tool_msgs) == 1
+    payload = json.loads(tool_msgs[-1]["content"])
+    assert payload["deleted"] is False
+    assert payload["error"] == "task not found"
