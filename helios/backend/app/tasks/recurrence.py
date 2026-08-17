@@ -15,7 +15,7 @@ def next_occurrence(recurrence: dict, after: datetime) -> datetime:
     raise ValueError(f"unsupported recurrence freq: {freq!r}")
 
 
-def _next_daily(recurrence, after):
+def _next_daily(recurrence: dict, after: datetime) -> datetime:
     when = _clock_time(recurrence)
     interval = max(1, int(recurrence.get("interval", 1)))
     day = after.date()
@@ -26,7 +26,7 @@ def _next_daily(recurrence, after):
         day += timedelta(days=interval)
 
 
-def _next_weekly(recurrence, after):
+def _next_weekly(recurrence: dict, after: datetime) -> datetime:
     targets = sorted({_WEEKDAYS[d] for d in _by_day(recurrence) if d in _WEEKDAYS})
     if not targets:
         raise ValueError("weekly recurrence requires at least one by_day")
@@ -42,7 +42,7 @@ def _next_weekly(recurrence, after):
         day += timedelta(days=1)
 
 
-def _next_monthly(recurrence, after):
+def _next_monthly(recurrence: dict, after: datetime) -> datetime:
     by_day = recurrence.get("by_day")
     day = max(1, min(31, int(by_day[0] if by_day else after.day)))
     interval = max(1, int(recurrence.get("interval", 1)))

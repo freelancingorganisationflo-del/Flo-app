@@ -40,12 +40,18 @@ async def fire_due_reminders(db: AsyncSession, now: datetime | None = None) -> l
     for task in tasks:
         if not _is_due(task, now):
             continue
+        if task.recurrence:
+            try:
+                task.reminder_at = next_occurrence(task.recurrence, now)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "skipping task %s: malformed recurrence %r", task.id, task.recurrence
+                )
+                continue
         db.add(
             Message(user_id=task.user_id, role="system", content=f"Reminder: {task.title}")
         )
         task.reminded_at = now
-        if task.recurrence:
-            task.reminder_at = next_occurrence(task.recurrence, now)
         fired.append(task.id)
     if fired:
         await db.commit()
@@ -55,7 +61,7 @@ async def fire_due_reminders(db: AsyncSession, now: datetime | None = None) -> l
 async def run_reminder_worker(
     stop_event: asyncio.Event, interval: float | None = None
 ) -> None:
-    interval = interval or settings.reminder_poll_seconds
+    interval = settings.reminder_poll_seconds if interval is None else interval
     while not stop_event.is_set():
         try:
             async with SessionLocal() as db:
