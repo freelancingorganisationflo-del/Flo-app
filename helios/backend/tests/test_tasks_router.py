@@ -63,3 +63,31 @@ async def test_router_ownership(authed_client):
 
 async def test_router_requires_auth(client):
     assert (await client.get("/api/tasks")).status_code == 401
+
+
+async def test_router_patch_and_complete_missing_404(authed_client):
+    client, headers = authed_client
+    assert (await client.patch("/api/tasks/999", json={"title": "x"}, headers=headers)).status_code == 404
+    assert (await client.post("/api/tasks/999/complete", headers=headers)).status_code == 404
+
+
+async def test_router_patch_and_complete_not_owned_404(authed_client):
+    client, headers = authed_client
+    created = await client.post("/api/tasks", json={"title": "mine"}, headers=headers)
+    task_id = created.json()["id"]
+    resp = await client.post("/api/auth/signup", json={"email": "own2@h.com", "password": "secret123"})
+    other_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    assert (await client.patch(f"/api/tasks/{task_id}", json={"title": "x"}, headers=other_headers)).status_code == 404
+    assert (await client.post(f"/api/tasks/{task_id}/complete", headers=other_headers)).status_code == 404
+
+
+async def test_router_patch_status_tracks_completed_at(authed_client):
+    client, headers = authed_client
+    created = await client.post("/api/tasks", json={"title": "flip"}, headers=headers)
+    task_id = created.json()["id"]
+    done = await client.patch(f"/api/tasks/{task_id}", json={"status": "done"}, headers=headers)
+    assert done.status_code == 200
+    assert done.json()["completed_at"] is not None
+    reopened = await client.patch(f"/api/tasks/{task_id}", json={"status": "pending"}, headers=headers)
+    assert reopened.status_code == 200
+    assert reopened.json()["completed_at"] is None

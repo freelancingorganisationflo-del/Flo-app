@@ -1,9 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Task, utcnow
+
+
+def ensure_utc(dt: datetime | None) -> datetime | None:
+    if dt is None or dt.tzinfo is not None:
+        return dt
+    return dt.replace(tzinfo=timezone.utc)
 
 
 async def create_task(
@@ -48,6 +54,9 @@ async def get_task(db: AsyncSession, user_id: int, task_id: int) -> Task | None:
     return task
 
 
+_EDITABLE_FIELDS = {"title", "notes", "due_at", "priority", "status", "reminder_at", "recurrence"}
+
+
 async def update_task(
     db: AsyncSession, user_id: int, task_id: int, **fields
 ) -> Task | None:
@@ -55,7 +64,13 @@ async def update_task(
     if task is None:
         return None
     for key, value in fields.items():
-        setattr(task, key, value)
+        if key in _EDITABLE_FIELDS:
+            setattr(task, key, value)
+    if "status" in fields:
+        if fields["status"] == "done":
+            task.completed_at = task.completed_at or utcnow()
+        else:
+            task.completed_at = None
     await db.commit()
     await db.refresh(task)
     return task

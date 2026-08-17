@@ -58,3 +58,21 @@ async def test_delete_task(db_session):
     assert await delete_task(db_session, 1, task.id) is False
     rows = (await db_session.execute(select(Task))).scalars().all()
     assert len(rows) == 0
+
+
+async def test_update_task_ignores_unknown_fields(db_session):
+    task = await create_task(db_session, 1, "guard")
+    updated = await update_task(db_session, 1, task.id, owner_id=99, title="guarded")
+    assert updated is not None
+    assert updated.user_id == 1
+    assert updated.title == "guarded"
+
+
+async def test_update_status_tracks_completed_at(db_session):
+    task = await create_task(db_session, 1, "flip")
+    done = await update_task(db_session, 1, task.id, status="done")
+    assert done is not None
+    assert done.completed_at is not None
+    reopened = await update_task(db_session, 1, task.id, status="pending")
+    assert reopened is not None
+    assert reopened.completed_at is None

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status as http_status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -11,6 +11,7 @@ from .service import (
     complete_task,
     create_task,
     delete_task,
+    ensure_utc,
     get_task,
     list_tasks,
     update_task,
@@ -27,6 +28,11 @@ class CreateTaskRequest(BaseModel):
     reminder_at: datetime | None = None
     recurrence: dict | None = None
 
+    @field_validator("due_at", "reminder_at")
+    @classmethod
+    def _ensure_utc(cls, value):
+        return ensure_utc(value)
+
 
 class UpdateTaskRequest(BaseModel):
     title: str | None = None
@@ -36,6 +42,11 @@ class UpdateTaskRequest(BaseModel):
     status: str | None = None
     reminder_at: datetime | None = None
     recurrence: dict | None = None
+
+    @field_validator("due_at", "reminder_at")
+    @classmethod
+    def _ensure_utc(cls, value):
+        return ensure_utc(value)
 
 
 def _to_dict(task) -> dict:
