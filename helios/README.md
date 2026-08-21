@@ -1,19 +1,32 @@
 # Helios — Personal Assistant AI
 
 Backend (Plans 1-2): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
-Chat + Memory + Tasks & Reminders. Frontend (PWA) and RAG / Voice modules
-come in later plans.
+Chat + Memory + Tasks & Reminders. Frontend (PWA, Plan 3) is a React/Vite PWA
+with chat, tasks, and memory UIs. RAG / Voice modules come in later plans.
 
 ## Run locally
 
 ```bash
+# 1. Backend
 cd backend
 cp .env.example .env   # then fill in USER_LLM_API_KEY with your own key
 python3 -m pip install --break-system-packages -r requirements.txt
 uvicorn app.main:app --reload
+
+# 2. Frontend (separate terminal)
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-Open http://localhost:8000/docs for the interactive API browser.
+Or run both with the start script:
+
+```bash
+./start.sh
+```
+
+- Backend: http://localhost:8000/docs (interactive API browser)
+- Frontend: http://localhost:5001 (Vite dev server, proxies `/api` → backend)
 
 ## Endpoints (Plan 1)
 
@@ -37,6 +50,9 @@ Open http://localhost:8000/docs for the interactive API browser.
 ```bash
 cd backend
 python3 -m pytest tests/ -v
+
+cd frontend
+pnpm lint && pnpm build
 ```
 
 ## Env vars
