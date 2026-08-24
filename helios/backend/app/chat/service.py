@@ -10,6 +10,7 @@ from ..llm_gateway.client import LLMClient
 from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
+from ..rag.service import search_documents as search_documents_service
 from ..tasks.service import (
     complete_task as complete_task_service,
     create_task as create_task_service,
@@ -40,7 +41,11 @@ SYSTEM_PROMPT = (
     "- search_memory: call when the user asks about something they told you "
     "before, or when recalling a stored fact would help answer.\n"
     "- save_memory: call when the user shares a personal fact, preference, or "
-    "detail worth remembering for future conversations.\n\n"
+    "detail worth remembering for future conversations.\n"
+    "- search_documents: call when the user asks about documents, notes, or "
+    "web pages they saved to their knowledge base. Search their personal "
+    "documents and answer from the retrieved content with a short source "
+    "attribution.\n\n"
     "You also manage the user's tasks and reminders:\n"
     "- create_task: parse the title, due date, and recurrence from the user's "
     "request. ALWAYS confirm the parsed details with the user before calling "
@@ -68,6 +73,13 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         embedding = await llm.embed(content)
         mem = await add_memory(db, user_id, content, embedding)
         return json.dumps({"saved": True, "id": mem.id})
+
+    async def search_documents_handler(query: str) -> str:
+        embedding = await llm.embed(query)
+        results = await search_documents_service(db, user_id, embedding)
+        if not results:
+            return json.dumps({"found": False, "results": []})
+        return json.dumps({"found": True, "results": results})
 
     async def create_task_handler(
         title: str,
@@ -182,6 +194,20 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
                 "required": ["content"],
             },
             handler=save_memory_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="search_documents",
+            description="Search the user's saved documents and knowledge base.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The topic to search for"}
+                },
+                "required": ["query"],
+            },
+            handler=search_documents_handler,
         )
     )
     registry.register(

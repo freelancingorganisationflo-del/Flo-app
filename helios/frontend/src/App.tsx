@@ -8,6 +8,7 @@ import { Signup } from "@/pages/Signup";
 import { Chat } from "@/pages/Chat";
 import { Tasks } from "@/pages/Tasks";
 import { Memory } from "@/pages/Memory";
+import { Documents } from "@/pages/Documents";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ export function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/memory" element={<Memory />} />
+          <Route path="/documents" element={<Documents />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

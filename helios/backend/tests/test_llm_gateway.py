@@ -10,6 +10,9 @@ from app.llm_gateway.tools import Tool, ToolRegistry
 
 def _transport_client(handler, monkeypatch) -> LLMClient:
     monkeypatch.setattr("app.llm_gateway.client.settings.user_llm_api_key", "test-key")
+    monkeypatch.setattr(
+        "app.llm_gateway.client.settings.user_llm_base_url", "https://api.openai.com/v1"
+    )
     return LLMClient(transport=httpx.MockTransport(handler))
 
 

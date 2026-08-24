@@ -21,7 +21,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body) headers.set("Content-Type", "application/json");
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
 
   const res = await fetch(`/api${path}`, { ...init, headers });
   if (res.status === 204) return undefined as T;
@@ -68,6 +70,21 @@ export interface ChatEvent {
   type: "tool" | "delta" | "done";
   name?: string;
   text?: string;
+}
+
+export interface Document {
+  id: number;
+  title: string;
+  type: string;
+  source: string | null;
+  indexed: boolean;
+  created_at: string;
+}
+
+export interface SearchResult {
+  content: string;
+  title: string;
+  score: number;
 }
 
 export const api = {
@@ -117,6 +134,29 @@ export const api = {
 
   deleteTask: (id: number) =>
     request<void>(`/tasks/${id}`, { method: "DELETE" }),
+
+  listDocuments: () => request<Document[]>("/documents"),
+
+  uploadDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return request<Document>("/documents", { method: "POST", body: form, headers });
+  },
+
+  ingestUrl: (url: string) =>
+    request<Document>("/documents/url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+
+  deleteDocument: (id: number) =>
+    request<void>(`/documents/${id}`, { method: "DELETE" }),
+
+  searchDocuments: (q: string) =>
+    request<{ results: SearchResult[] }>(`/documents/search?q=${encodeURIComponent(q)}`),
 
   streamChat: async (
     message: string,

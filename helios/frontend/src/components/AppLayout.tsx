@@ -5,6 +5,7 @@ const navItems = [
   { to: "/chat", label: "Chat" },
   { to: "/tasks", label: "Tasks" },
   { to: "/memory", label: "Memory" },
+  { to: "/documents", label: "Documents" },
 ];
 
 export function AppLayout() {
@@ -43,7 +44,7 @@ export function AppLayout() {
       </main>
 
       <nav className="shrink-0 bg-white border-t border-border md:hidden">
-        <div className="max-w-5xl mx-auto grid grid-cols-3">
+        <div className="max-w-5xl mx-auto grid grid-cols-4">
           {navItems.map((item) => (
             <NavLink
               key={item.to}

@@ -1,8 +1,9 @@
 # Helios — Personal Assistant AI
 
-Backend (Plans 1-2): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
-Chat + Memory + Tasks & Reminders. Frontend (PWA, Plan 3) is a React/Vite PWA
-with chat, tasks, and memory UIs. RAG / Voice modules come in later plans.
+Backend (Plans 1-4): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
+Chat + Memory + Tasks & Reminders + Knowledge Base (RAG). Frontend (PWA,
+Plan 3) is a React/Vite PWA with chat, tasks, memory, and documents UIs.
+Voice module comes in a later plan.
 
 ## Run locally
 
@@ -44,6 +45,19 @@ Or run both with the start script:
 - `PATCH  /api/tasks/{id}` — partially update a task
 - `POST   /api/tasks/{id}/complete` — mark a task done
 - `DELETE /api/tasks/{id}` — delete a task (204)
+
+### Knowledge base (RAG, Plan 4)
+
+- `POST /api/documents` — upload a file (TXT/MD/PDF/DOCX/HTML), splits + embeds
+- `POST /api/documents/url` — ingest a web page from a URL
+- `GET  /api/documents` — list documents
+- `GET  /api/documents/{id}` — get one document
+- `GET  /api/documents/{id}/content` — get the full extracted text
+- `GET  /api/documents/search?q=...` — semantic search over chunks
+- `DELETE /api/documents/{id}` — delete a document and its chunks (204)
+
+Chat tool `search_documents` lets the assistant search the user's knowledge
+base and answer with source attribution.
 
 ## Tests
 
