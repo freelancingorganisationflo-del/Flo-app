@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     llm_max_tool_iterations: int = 5
 
+    user_stt_model: str = "openai/whisper-1"
+    user_tts_model: str = "deepgram/flux-tts:free"
+    user_tts_voice: str = "flux-bree-en"
+
     memory_top_k: int = 5
 
     reminder_poll_seconds: float = 30.0
