@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..llm_gateway.client import LLMClient
+from ..llm_gateway.client import LLMClient, LLMProviderError
 from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
@@ -324,13 +324,25 @@ async def _run_tool_loop(
     messages: list[dict],
     registry: ToolRegistry,
     llm: LLMClient,
-) -> tuple[str, list[dict]]:
+    model: str | None = None,
+) -> tuple[str, list[dict], str | None]:
     iterations = settings.llm_max_tool_iterations
     tool_events: list[dict] = []
     final: str | None = None
+    used_model = model
 
     for _ in range(iterations):
-        result = await llm.complete(messages, tools=registry.schema())
+        try:
+            result = await llm.complete(
+                messages,
+                tools=registry.schema(),
+                **({"model": used_model} if used_model else {}),
+            )
+        except LLMProviderError:
+            if used_model is None:
+                raise
+            used_model = None
+            result = await llm.complete(messages, tools=registry.schema())
         if result.tool_calls:
             if result.assistant_message:
                 messages.append(result.assistant_message)
@@ -346,12 +358,12 @@ async def _run_tool_loop(
 
     if final is None:
         final = OUT_OF_STEPS_MESSAGE
-    return final, tool_events
+    return final, tool_events, used_model
 
 
 async def _run_and_persist(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient
-) -> tuple[str, list[dict]]:
+    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
+) -> tuple[str, list[dict], str | None]:
     history = await recent_history(db, user.id)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -360,14 +372,16 @@ async def _run_and_persist(
     ]
     registry = build_registry(db, user.id, llm)
     try:
-        final, tool_events = await _run_tool_loop(db, user.id, messages, registry, llm)
+        final, tool_events, used_model = await _run_tool_loop(
+            db, user.id, messages, registry, llm, model=model
+        )
     except Exception:
         await db.rollback()
         raise
     # On tool-loop exhaustion the assistant text is a fallback, not a real
     # reply, so persist nothing rather than orphan the user message.
     if final == OUT_OF_STEPS_MESSAGE:
-        return final, tool_events
+        return final, tool_events, used_model
     db.add_all(
         [
             Message(user_id=user.id, role="user", content=user_message),
@@ -375,26 +389,26 @@ async def _run_and_persist(
         ]
     )
     await db.commit()
-    return final, tool_events
+    return final, tool_events, used_model
 
 
 async def run_chat(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient
-) -> tuple[str, list[dict]]:
-    return await _run_and_persist(db, user, user_message, llm)
+    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
+) -> tuple[str, list[dict], str | None]:
+    return await _run_and_persist(db, user, user_message, llm, model=model)
 
 
 async def stream_chat(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient
+    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
 ):
-    final, tool_events = await _run_and_persist(db, user, user_message, llm)
+    final, tool_events, used_model = await _run_and_persist(db, user, user_message, llm, model=model)
 
     for event in tool_events:
         yield {"type": "tool", "name": event["name"]}
     for token in _tokenize(final):
         yield {"type": "delta", "text": token}
         await asyncio.sleep(0.01)
-    yield {"type": "done"}
+    yield {"type": "done", "model": used_model or llm.model}
 
 
 def _tokenize(text: str, chunk: int = 3):

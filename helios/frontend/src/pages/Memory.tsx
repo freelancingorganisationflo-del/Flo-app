@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, type Memory as MemoryItem } from "@/lib/api";
 import { Spinner } from "@/components/Spinner";
+import { Icon } from "@/components/Icon";
 
 export function Memory() {
   const [memories, setMemories] = useState<MemoryItem[]>([]);
@@ -51,62 +52,69 @@ export function Memory() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
-      <h1 className="font-display font-bold text-2xl text-flotext mb-4">Memory</h1>
-      <p className="text-sm text-grey mb-4">
-        Facts Helios remembers about you. You can also just tell Helios in chat.
-      </p>
-
-      <form onSubmit={handleAdd} className="flex gap-2 mb-6">
-        <input
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="e.g. My birthday is Jan 5"
-          className="flex-1 px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!content.trim() || submitting}
-          className="px-4 py-2.5 rounded-lg bg-teal text-navy2 font-semibold hover:bg-teal2 transition-colors disabled:opacity-50 flex items-center gap-2"
-        >
-          {submitting && <Spinner className="w-4 h-4" />}
-          Save
-        </button>
-      </form>
-
-      {error && (
-        <p className="text-sm text-red bg-red/5 border border-red/20 rounded-lg px-3 py-2 mb-4">
-          {error}
-        </p>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
+    <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6">
+        <div className="flex items-center gap-3 mb-1 animate-fade-up">
+          <Icon name="brain" className="w-6 h-6 text-violet" />
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Memory</h1>
         </div>
-      ) : memories.length === 0 ? (
-        <p className="text-center text-grey text-sm py-10">
-          No memories saved yet.
+        <p className="text-sm text-grey mb-6 animate-fade-up">
+          Facts HELIOS remembers about you. You can also just tell HELIOS in chat.
         </p>
-      ) : (
-        <ul className="space-y-2">
-          {memories.map((m) => (
-            <li
-              key={m.id}
-              className="bg-white rounded-card border border-border px-4 py-3 flex items-center gap-3"
-            >
-              <p className="flex-1 text-sm text-flotext">{m.content}</p>
-              <button
-                onClick={() => handleDelete(m.id)}
-                aria-label="Delete memory"
-                className="text-grey hover:text-red px-2 py-1 rounded-lg hover:bg-red/5 transition-colors text-sm"
+
+        <form onSubmit={handleAdd} className="flex gap-2 mb-6 animate-fade-up" style={{ animationDelay: "60ms" }}>
+          <input
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="e.g. My birthday is Jan 5"
+            className="input-dark flex-1"
+          />
+          <button
+            type="submit"
+            disabled={!content.trim() || submitting}
+            className="btn-primary flex items-center gap-2"
+          >
+            {submitting && <Spinner className="w-4 h-4" />}
+            Save
+          </button>
+        </form>
+
+        {error && (
+          <p className="text-sm text-red glass border-red/30 rounded-lg px-3 py-2 mb-4 animate-fade-in">
+            {error}
+          </p>
+        )}
+
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Spinner />
+          </div>
+        ) : memories.length === 0 ? (
+          <div className="text-center text-grey text-sm py-12 animate-fade-in">
+            <Icon name="brain" className="w-8 h-8 mx-auto mb-3 text-faint" />
+            No memories saved yet.
+          </div>
+        ) : (
+          <ul className="space-y-2 animate-fade-in">
+            {memories.map((m) => (
+              <li
+                key={m.id}
+                className="glass rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:border-violet/30 transition-all"
               >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                <span className="w-2 h-2 rounded-full bg-violet shadow-glow-violet shrink-0" />
+                <p className="flex-1 text-sm text-ink leading-relaxed">{m.content}</p>
+                <button
+                  onClick={() => handleDelete(m.id)}
+                  aria-label="Delete memory"
+                  className="text-faint hover:text-red px-2 py-1 rounded-lg hover:bg-red/10 transition-colors text-sm"
+                >
+                  <Icon name="trash" className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

@@ -24,7 +24,7 @@ class FakeMemoryLLM(LLMClient):
             raise LLMProviderError("embedding service down")
         return [1.0, 0.0]
 
-    async def complete(self, messages, tools=None):
+    async def complete(self, messages, tools=None, model=None):
         raise AssertionError("complete must not be called by the memory router")
 
 

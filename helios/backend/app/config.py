@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     user_llm_api_key: str = ""
     user_llm_base_url: str = "https://api.openai.com/v1"
     user_llm_model: str = "gpt-4o-mini"
+    user_llm_available_models: list[str] = ["gpt-4o-mini"]
     user_llm_embedding_model: str = "text-embedding-3-small"
+    user_llm_max_tokens: int = 1024
+    llm_auto_route: bool = True
     llm_timeout_seconds: float = 60.0
     llm_max_tool_iterations: int = 5
 
@@ -23,6 +26,8 @@ class Settings(BaseSettings):
     user_tts_voice: str = "flux-bree-en"
 
     memory_top_k: int = 5
+    documents_top_k: int = 4
+    search_min_score: float = 0.35
 
     reminder_poll_seconds: float = 30.0
 

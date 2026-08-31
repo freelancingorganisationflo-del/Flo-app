@@ -17,9 +17,11 @@ class FakeLLM(LLMClient):
         self.calls: list[list[dict]] = []
         self.fail = False
         self.fail_embed = False
+        self.last_model: str | None = None
 
-    async def complete(self, messages, tools=None):
+    async def complete(self, messages, tools=None, model=None):
         self.calls.append(messages)
+        self.last_model = model
         if self.fail:
             raise RuntimeError("boom")
         last = messages[-1]
@@ -58,7 +60,7 @@ class FakeLLM(LLMClient):
 
 
 class LoopExhaustLLM(LLMClient):
-    async def complete(self, messages, tools=None):
+    async def complete(self, messages, tools=None, model=None):
         return ChatResult(
             content=None,
             tool_calls=[ToolCall(id="call_x", name="save_memory", arguments='{"content": "spam"}')],
@@ -173,3 +175,35 @@ async def test_chat_tool_loop_exhaustion_persists_no_messages(authed_client, db_
     assert "ran out of steps" in resp.json()["reply"]
     rows = (await db_session.execute(select(Message))).scalars().all()
     assert len(rows) == 0
+
+
+async def test_list_models(authed_client, fake_llm):
+    client, headers = authed_client
+    resp = await client.get("/api/chat/models", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "default" in data
+    assert isinstance(data["models"], list)
+    assert data["default"] in data["models"]
+
+
+async def test_chat_rejects_unknown_model(authed_client, fake_llm):
+    client, headers = authed_client
+    resp = await client.post(
+        "/api/chat", json={"message": "hello", "model": "not-a-real-model"}, headers=headers
+    )
+    assert resp.status_code == 400
+    assert "not enabled" in resp.json()["detail"]
+
+
+async def test_chat_accepts_enabled_model(authed_client, fake_llm):
+    from app.config import settings
+
+    client, headers = authed_client
+    test_model = settings.user_llm_available_models[0]
+    resp = await client.post(
+        "/api/chat", json={"message": "hello", "model": test_model}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["reply"] == "Echo: hello"
+    assert fake_llm.last_model == test_model

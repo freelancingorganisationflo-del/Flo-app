@@ -83,21 +83,31 @@ async def delete_document(db: AsyncSession, user_id: int, doc_id: int) -> bool:
 async def search_documents(
     db: AsyncSession, user_id: int, query_embedding: list[float], top_k: int | None = None
 ) -> list[dict]:
-    """Return top-k chunks (with document titles) for a query embedding."""
-    top_k = top_k or settings.memory_top_k
+    """Return top-k chunks (with document titles) for a query embedding.
+
+    Only chunks whose similarity meets the configured minimum score are
+    returned, and identical chunk text is deduplicated so near-duplicate
+    documents don't flood the results.
+    """
+    top_k = top_k or settings.documents_top_k
     rows = (
         (await db.execute(select(DocumentChunk).where(DocumentChunk.user_id == user_id)))
         .scalars()
         .all()
     )
     scored: list[tuple[float, DocumentChunk]] = []
+    seen_content: set[str] = set()
     for chunk in rows:
         if not chunk.embedding_json:
             continue
         emb = json.loads(chunk.embedding_json)
         score = cosine_similarity(query_embedding, emb)
-        if score > 0:
-            scored.append((score, chunk))
+        if score < settings.search_min_score:
+            continue
+        if chunk.content in seen_content:
+            continue
+        seen_content.add(chunk.content)
+        scored.append((score, chunk))
     scored.sort(key=lambda item: item[0], reverse=True)
 
     doc_titles: dict[int, str] = {}

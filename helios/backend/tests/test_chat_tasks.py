@@ -33,7 +33,7 @@ class TaskLLM(LLMClient):
             },
         )
 
-    async def complete(self, messages, tools=None):
+    async def complete(self, messages, tools=None, model=None):
         self.calls.append(messages)
         if tools:
             self.schemas.append(tools)

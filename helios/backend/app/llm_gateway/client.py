@@ -38,16 +38,25 @@ class LLMClient:
         self.base_url = settings.user_llm_base_url.rstrip("/")
         self.model = settings.user_llm_model
         self.embedding_model = settings.user_llm_embedding_model
+        self.max_tokens = settings.user_llm_max_tokens
         self.timeout = settings.llm_timeout_seconds
         self._transport = transport
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
-    async def complete(self, messages: list[dict], tools: list[dict] | None = None) -> ChatResult:
+    async def complete(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
+    ) -> ChatResult:
         if not self.api_key:
             raise LLMProviderError("USER_LLM_API_KEY is not configured")
-        payload: dict[str, Any] = {"model": self.model, "messages": messages}
+        payload: dict[str, Any] = {"model": model or self.model, "messages": messages}
+        if max_tokens or self.max_tokens:
+            payload["max_tokens"] = max_tokens or self.max_tokens
         if tools:
             payload["tools"] = tools
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type Document, type SearchResult } from "@/lib/api";
 import { Spinner } from "@/components/Spinner";
+import { Icon } from "@/components/Icon";
 
 const typeColor: Record<string, string> = {
-  file: "bg-teal/10 text-teal2 border-teal/20",
-  url: "bg-orange/10 text-orange border-orange/20",
+  file: "bg-cyan/10 text-cyan border-cyan/30",
+  url: "bg-amber/10 text-amber border-amber/30",
 };
 
 function formatDate(iso: string): string {
@@ -103,144 +104,156 @@ export function Documents() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
-      <h1 className="font-display font-bold text-2xl text-flotext mb-4">Knowledge base</h1>
-      <p className="text-sm text-grey mb-6">
-        Upload documents or paste a URL. Helios indexes them and answers from them
-        in chat with source attribution.
-      </p>
+    <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
+        <div className="flex items-center gap-3 mb-1 animate-fade-up">
+          <Icon name="book" className="w-6 h-6 text-blue" />
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Knowledge base</h1>
+        </div>
+        <p className="text-sm text-grey mb-6 animate-fade-up">
+          Upload documents or paste a URL. HELIOS indexes them and answers from them
+          in chat with source attribution.
+        </p>
 
-      <div className="space-y-3 mb-6">
-        <div className="bg-white rounded-card border border-border p-4">
-          <div className="flex items-center gap-3">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".txt,.md,.markdown,.pdf,.docx,.html,.htm"
-              onChange={handleFile}
-              className="hidden"
-              id="file-upload"
-            />
-            <label
-              htmlFor="file-upload"
-              className="cursor-pointer px-4 py-2.5 rounded-lg bg-teal text-navy2 font-semibold hover:bg-teal2 transition-colors flex items-center gap-2"
-            >
-              {uploading && <Spinner className="w-4 h-4" />}
+        <div className="grid md:grid-cols-2 gap-3 mb-6 animate-fade-up" style={{ animationDelay: "60ms" }}>
+          <div className="glass rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-faint mb-3">
               Upload file
-            </label>
-            <span className="text-xs text-grey">TXT · Markdown · PDF · DOCX · HTML</span>
+            </p>
+            <div className="flex flex-col gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".txt,.md,.markdown,.pdf,.docx,.html,.htm"
+                onChange={handleFile}
+                className="hidden"
+                id="file-upload"
+              />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer inline-flex justify-center items-center gap-2 px-4 py-2.5 rounded-lg btn-ghost"
+              >
+                {uploading ? <Spinner className="w-4 h-4" /> : <Icon name="paperclip" className="w-4 h-4" />}
+                {uploading ? "Uploading…" : "Choose file"}
+              </label>
+              <span className="text-[11px] text-faint">TXT · Markdown · PDF · DOCX · HTML</span>
+            </div>
           </div>
+
+          <form onSubmit={handleUrl} className="glass rounded-2xl p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-faint mb-3">
+              Index from URL
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/article"
+                className="input-dark flex-1"
+              />
+              <button
+                type="submit"
+                disabled={!url.trim() || ingesting}
+                className="btn-ghost flex items-center gap-2"
+              >
+                {ingesting && <Spinner className="w-4 h-4" />}
+                Index
+              </button>
+            </div>
+          </form>
         </div>
 
-        <form onSubmit={handleUrl} className="bg-white rounded-card border border-border p-4">
+        {error && (
+          <p className="text-sm text-red glass border-red/30 rounded-lg px-3 py-2 mb-4 animate-fade-in">
+            {error}
+          </p>
+        )}
+
+        <form onSubmit={handleSearch} className="mb-6 animate-fade-up" style={{ animationDelay: "100ms" }}>
           <div className="flex gap-2">
             <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/article"
-              className="flex-1 px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your knowledge base…"
+              className="input-dark flex-1"
             />
             <button
               type="submit"
-              disabled={!url.trim() || ingesting}
-              className="px-4 py-2.5 rounded-lg bg-teal text-navy2 font-semibold hover:bg-teal2 transition-colors disabled:opacity-50 flex items-center gap-2"
+              disabled={!query.trim() || searching}
+              className="btn-primary flex items-center gap-2"
             >
-              {ingesting && <Spinner className="w-4 h-4" />}
-              Index URL
+              {searching ? <Spinner className="w-4 h-4" /> : <Icon name="search" className="w-4 h-4" />}
+              Search
             </button>
           </div>
         </form>
-      </div>
 
-      {error && (
-        <p className="text-sm text-red bg-red/5 border border-red/20 rounded-lg px-3 py-2 mb-4">
-          {error}
-        </p>
-      )}
+        {results !== null && (
+          <div className="mb-6 animate-fade-in">
+            <h2 className="font-display font-bold text-lg text-ink mb-2">
+              Results{results.length === 0 ? " — nothing found" : ""}
+            </h2>
+            <ul className="space-y-2">
+              {results.map((r, i) => (
+                <li key={i} className="glass rounded-2xl px-4 py-3 hover:border-blue/40 transition-all">
+                  <p className="text-[11px] text-blue font-semibold mb-1 flex items-center gap-1.5">
+                    <Icon name="quote" className="w-3 h-3" />
+                    {r.title} · {r.score}
+                  </p>
+                  <p className="text-sm text-ink/85 leading-relaxed">{r.content}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      <form onSubmit={handleSearch} className="mb-6">
-        <div className="flex gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your knowledge base…"
-            className="flex-1 px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!query.trim() || searching}
-            className="px-4 py-2.5 rounded-lg bg-navy2 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
-          >
-            {searching && <Spinner className="w-4 h-4" />}
-            Search
-          </button>
-        </div>
-      </form>
-
-      {results !== null && (
-        <div className="mb-6">
-          <h2 className="font-display font-bold text-lg text-flotext mb-2">
-            Results{results.length === 0 ? " — nothing found" : ""}
-          </h2>
-          <ul className="space-y-2">
-            {results.map((r, i) => (
-              <li key={i} className="bg-white rounded-card border border-border px-4 py-3">
-                <p className="text-[11px] text-teal2 font-semibold mb-1">
-                  {r.title} · {r.score}
-                </p>
-                <p className="text-sm text-flotext">{r.content}</p>
+        <h2 className="font-display font-bold text-lg text-ink mb-2 animate-fade-up">Documents</h2>
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Spinner />
+          </div>
+        ) : docs.length === 0 ? (
+          <div className="text-center text-grey text-sm py-12 animate-fade-in">
+            <Icon name="book" className="w-8 h-8 mx-auto mb-3 text-faint" />
+            No documents yet. Upload one to get started.
+          </div>
+        ) : (
+          <ul className="space-y-2 animate-fade-in">
+            {docs.map((d) => (
+              <li
+                key={d.id}
+                className="glass rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-blue/25 transition-all"
+              >
+                <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue/20 to-violet/20 border border-blue/25 flex items-center justify-center text-blue shrink-0">
+                  <Icon name="file" className="w-4 h-4" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate text-ink">{d.title}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className={`chip ${typeColor[d.type] ?? typeColor.file}`}>
+                      {d.type === "url" ? "URL" : "File"}
+                    </span>
+                    <span className="text-[11px] text-faint">{formatDate(d.created_at)}</span>
+                    {d.source && (
+                      <span className="text-[11px] text-faint truncate max-w-[220px]">
+                        {d.source}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDelete(d.id)}
+                  aria-label="Delete document"
+                  className="text-faint hover:text-red px-2 py-1 rounded-lg hover:bg-red/10 transition-colors text-sm"
+                >
+                  <Icon name="trash" className="w-4 h-4" />
+                </button>
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      <h2 className="font-display font-bold text-lg text-flotext mb-2">Documents</h2>
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spinner />
-        </div>
-      ) : docs.length === 0 ? (
-        <p className="text-center text-grey text-sm py-10">
-          No documents yet. Upload one to get started.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {docs.map((d) => (
-            <li
-              key={d.id}
-              className="bg-white rounded-card border border-border px-4 py-3 flex items-center gap-3"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate text-flotext">{d.title}</p>
-                <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <span
-                    className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${
-                      typeColor[d.type] ?? typeColor.file
-                    }`}
-                  >
-                    {d.type}
-                  </span>
-                  <span className="text-[11px] text-grey">{formatDate(d.created_at)}</span>
-                  {d.source && (
-                    <span className="text-[11px] text-grey truncate max-w-[200px]">
-                      {d.source}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => handleDelete(d.id)}
-                aria-label="Delete document"
-                className="text-grey hover:text-red px-2 py-1 rounded-lg hover:bg-red/5 transition-colors text-sm"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        )}
+      </div>
     </div>
   );
 }

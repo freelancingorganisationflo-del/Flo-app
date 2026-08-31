@@ -40,8 +40,9 @@ async def search_memories(
             continue
         emb = json.loads(mem.embedding_json)
         score = cosine_similarity(query_embedding, emb)
-        if score > 0:
-            scored.append((score, mem))
+        if score < settings.search_min_score:
+            continue
+        scored.append((score, mem))
     scored.sort(key=lambda item: item[0], reverse=True)
     return [mem for _, mem in scored[:top_k]]
 

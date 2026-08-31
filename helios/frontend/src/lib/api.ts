@@ -70,6 +70,7 @@ export interface ChatEvent {
   type: "tool" | "delta" | "done";
   name?: string;
   text?: string;
+  model?: string;
 }
 
 export interface Document {
@@ -85,6 +86,11 @@ export interface SearchResult {
   content: string;
   title: string;
   score: number;
+}
+
+export interface ModelsInfo {
+  default: string;
+  models: string[];
 }
 
 export const api = {
@@ -158,10 +164,13 @@ export const api = {
   searchDocuments: (q: string) =>
     request<{ results: SearchResult[] }>(`/documents/search?q=${encodeURIComponent(q)}`),
 
+  listModels: () => request<ModelsInfo>("/chat/models"),
+
   streamChat: async (
     message: string,
     onEvent: (evt: ChatEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    model?: string
   ): Promise<void> => {
     const token = getToken();
     const res = await fetch("/api/chat/stream", {
@@ -170,7 +179,7 @@ export const api = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(model ? { message, model } : { message }),
       signal,
     });
     if (!res.ok || !res.body) {

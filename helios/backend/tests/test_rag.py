@@ -3,6 +3,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.config import settings
 from app.deps import get_llm
 from app.llm_gateway.client import LLMClient
 from app.main import app
@@ -30,7 +31,7 @@ class FakeRagLLM(LLMClient):
         seed = sum(ord(c) for c in text)
         return [float(seed % 7) / 7.0, 1.0]
 
-    async def complete(self, messages, tools=None):
+    async def complete(self, messages, tools=None, model=None):
         raise AssertionError("complete must not be called by the rag router")
 
 
@@ -136,9 +137,30 @@ async def test_search_documents_scoped_and_ranked(db_session):
         db_session, 2, "other", "someone else's secret plans", embed=_fixed_embed([1.0, 0.0, 0.0])
     )
     results = await search_documents(db_session, 1, [0.9, 0.1, 0.0], top_k=5)
-    assert len(results) == 2
+    assert len(results) == 1
     assert results[0]["title"] == "plans"
     assert all("title" in r and "content" in r and "score" in r for r in results)
+
+
+async def test_search_documents_filters_below_threshold(db_session):
+    await ingest_text(
+        db_session, 1, "plans", "Project plans about building a rocket", embed=_fixed_embed([1.0, 0.0, 0.0])
+    )
+    await ingest_text(
+        db_session, 1, "recipes", "Baking sourdough bread on weekends", embed=_fixed_embed([0.0, 1.0, 0.0])
+    )
+    results = await search_documents(db_session, 1, [0.9, 0.1, 0.0], top_k=5)
+    assert all(r["score"] >= settings.search_min_score for r in results)
+    assert all(r["title"] != "recipes" for r in results)
+
+
+async def test_search_documents_deduplicates_identical_chunks(db_session):
+    chunk = "shared content about rockets"
+    await ingest_text(db_session, 1, "doc one", chunk, embed=_fixed_embed([1.0, 0.0, 0.0]))
+    await ingest_text(db_session, 1, "doc two", chunk, embed=_fixed_embed([1.0, 0.0, 0.0]))
+    results = await search_documents(db_session, 1, [1.0, 0.0, 0.0], top_k=5)
+    contents = [r["content"] for r in results]
+    assert len(contents) == len(set(contents))
 
 
 async def test_get_and_delete_document(db_session):

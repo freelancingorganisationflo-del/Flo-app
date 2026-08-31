@@ -30,22 +30,27 @@ export function Signup() {
       setError(res.error);
       return;
     }
-    navigate("/chat", { replace: true });
+    navigate("/dashboard", { replace: true });
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-navy2 px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-navy px-4 relative overflow-hidden">
+      <div className="fixed inset-0 pointer-events-none bg-aurora" aria-hidden="true" />
+      <div className="fixed inset-0 pointer-events-none bg-grid opacity-40" aria-hidden="true" />
+      <div className="relative w-full max-w-sm animate-fade-up">
         <div className="mb-8 text-center">
-          <div className="mx-auto w-14 h-14 rounded-full bg-teal flex items-center justify-center text-navy2 font-black text-2xl mb-3">
-            H
+          <div className="relative w-14 h-14 mx-auto mb-4">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan via-blue to-violet shadow-glow-cyan animate-pulse-glow" />
+            <div className="absolute inset-[3px] rounded-2xl bg-navy flex items-center justify-center">
+              <span className="gradient-text font-display font-black text-2xl">H</span>
+            </div>
           </div>
-          <h1 className="font-display font-bold text-2xl text-white">Create your account</h1>
-          <p className="text-sm text-white/50 mt-1">Your personal assistant awaits</p>
+          <h1 className="font-display font-bold text-2xl text-ink">Create your account</h1>
+          <p className="text-sm text-grey mt-1">Your personal assistant awaits</p>
         </div>
-        <form onSubmit={handleSubmit} className="bg-white rounded-card p-6 shadow-lg space-y-4">
+        <form onSubmit={handleSubmit} className="glass-strong rounded-2xl p-6 shadow-panel space-y-4 glow-ring">
           <div>
-            <label htmlFor="email" className="block text-sm font-semibold text-flotext mb-1">
+            <label htmlFor="email" className="block text-sm font-semibold text-ink mb-1">
               Email
             </label>
             <input
@@ -55,11 +60,11 @@ export function Signup() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
+              className="input-dark"
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-flotext mb-1">
+            <label htmlFor="password" className="block text-sm font-semibold text-ink mb-1">
               Password
             </label>
             <input
@@ -69,11 +74,11 @@ export function Signup() {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
+              className="input-dark"
             />
           </div>
           <div>
-            <label htmlFor="confirm" className="block text-sm font-semibold text-flotext mb-1">
+            <label htmlFor="confirm" className="block text-sm font-semibold text-ink mb-1">
               Confirm password
             </label>
             <input
@@ -83,26 +88,26 @@ export function Signup() {
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-border focus:border-teal focus:outline-none"
+              className="input-dark"
             />
           </div>
           {error && (
-            <p className="text-sm text-red bg-red/5 border border-red/20 rounded-lg px-3 py-2">
+            <p className="text-sm text-red bg-red/10 border border-red/30 rounded-lg px-3 py-2">
               {error}
             </p>
           )}
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2.5 rounded-lg bg-teal text-navy2 font-semibold hover:bg-teal2 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full py-2.5 rounded-lg btn-primary flex items-center justify-center gap-2"
           >
             {submitting && <Spinner className="w-4 h-4" />}
             Create account
           </button>
         </form>
-        <p className="text-center text-sm text-white/50 mt-4">
+        <p className="text-center text-sm text-grey mt-4">
           Already have an account?{" "}
-          <Link to="/login" className="text-teal hover:underline">
+          <Link to="/login" className="text-cyan hover:underline">
             Sign in
           </Link>
         </p>
