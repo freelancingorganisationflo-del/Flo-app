@@ -1,6 +1,7 @@
 import asyncio
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
 from ..rag.service import search_documents as search_documents_service
+from ..search.service import SearchError, fetch_page, search_web
 from ..tasks.service import (
     complete_task as complete_task_service,
     create_task as create_task_service,
@@ -34,29 +36,61 @@ OUT_OF_STEPS_MESSAGE = (
     "I ran out of steps trying to help with that. Please try rephrasing."
 )
 
-SYSTEM_PROMPT = (
-    "You are Helios, a personal AI assistant. Be warm, concise, and helpful.\n\n"
-    "You have tools to look up stored facts about the user and save new facts "
-    "to long-term memory. Use them whenever relevant:\n"
-    "- search_memory: call when the user asks about something they told you "
-    "before, or when recalling a stored fact would help answer.\n"
-    "- save_memory: call when the user shares a personal fact, preference, or "
-    "detail worth remembering for future conversations.\n"
-    "- search_documents: call when the user asks about documents, notes, or "
-    "web pages they saved to their knowledge base. Search their personal "
-    "documents and answer from the retrieved content with a short source "
-    "attribution.\n\n"
-    "You also manage the user's tasks and reminders:\n"
-    "- create_task: parse the title, due date, and recurrence from the user's "
-    "request. ALWAYS confirm the parsed details with the user before calling "
-    "this tool.\n"
-    "- list_tasks: call when the user asks what tasks or reminders are pending "
-    "or what's on their plate.\n"
-    "- complete_task: call when the user says they finished a task.\n"
-    "- update_task: call to change a task's details.\n"
-    "- delete_task: call to remove a task.\n\n"
-    "When you use a tool, keep your final answer short and natural."
+_SKIP_WEB = re.compile(
+    r"^(hi|hello|hey|thanks|thank you|ok|okay|yo|gm|good morning|"
+    r"good afternoon|good evening)\b",
+    re.I,
 )
+_PERSONAL = re.compile(
+    r"\b(remind me|create a task|add a task|my tasks|remember that|"
+    r"save (a |this )?memory|what do you remember|on my plate|"
+    r"mark .+ done|delete (the |this )?task|my documents|knowledge base)\b",
+    re.I,
+)
+_ASK = re.compile(
+    r"\?|\b(who|what|when|where|why|how|which|latest|news|today|current|"
+    r"price|weather|score|stock|explain|define|search|find|look up|"
+    r"tell me|kya|kaun|kab|kahan|kyun|kaise)\b",
+    re.I,
+)
+
+
+def should_web_search(message: str) -> bool:
+    text = message.strip()
+    if len(text) < 4:
+        return False
+    if _SKIP_WEB.search(text) and len(text) < 24:
+        return False
+    if _PERSONAL.search(text):
+        return False
+    if _ASK.search(text):
+        return True
+    return len(text.split()) >= 5
+
+
+def _system_prompt() -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return (
+        "You are Helios, a personal AI assistant. Be warm, concise, and accurate.\n"
+        f"Today's date is {today} (UTC).\n\n"
+        "Ground factual answers in live web evidence. If web search results or "
+        "fetched pages are already in this conversation, use them. Do not invent "
+        "facts, dates, names, or numbers. If sources disagree or are thin, say so.\n"
+        "Cite 2-4 sources as markdown links at the end of factual answers.\n\n"
+        "Tools:\n"
+        "- web_search: use for current events, news, facts, prices, people, "
+        "places, or anything you are not certain about. Prefer a focused query.\n"
+        "- fetch_url: after web_search, read the 1-2 most relevant pages before "
+        "answering in depth.\n"
+        "- search_memory / save_memory: personal facts about the user.\n"
+        "- search_documents: the user's private knowledge base only.\n"
+        "- create_task / list_tasks / complete_task / update_task / delete_task: "
+        "tasks and reminders. Confirm details before creating a task.\n\n"
+        "When you use a tool, keep the final answer short and natural."
+    )
+
+
+SYSTEM_PROMPT = _system_prompt()
 
 
 def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegistry:
@@ -80,6 +114,22 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         if not results:
             return json.dumps({"found": False, "results": []})
         return json.dumps({"found": True, "results": results})
+
+    async def web_search_handler(query: str) -> str:
+        try:
+            results = await search_web(query)
+        except SearchError as exc:
+            return json.dumps({"found": False, "error": str(exc), "results": []})
+        if not results:
+            return json.dumps({"found": False, "results": []})
+        return json.dumps({"found": True, "results": results})
+
+    async def fetch_url_handler(url: str) -> str:
+        try:
+            page = await fetch_page(url)
+        except SearchError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        return json.dumps({"ok": True, **page})
 
     async def create_task_handler(
         title: str,
@@ -212,6 +262,34 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
     )
     registry.register(
         Tool(
+            name="web_search",
+            description="Search the live public web. Always use for news, current events, facts you are unsure of, or anything not already covered by search results in this conversation.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"}
+                },
+                "required": ["query"],
+            },
+            handler=web_search_handler,
+        )
+    )
+    registry.register(
+        Tool(
+            name="fetch_url",
+            description="Read a public web page and extract its text. After web_search, fetch the 1-2 best URLs before answering.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The http(s) URL to fetch"}
+                },
+                "required": ["url"],
+            },
+            handler=fetch_url_handler,
+        )
+    )
+    registry.register(
+        Tool(
             name="create_task",
             description="Create a task or reminder for the user.",
             parameters={
@@ -318,6 +396,69 @@ async def recent_history(db: AsyncSession, user_id: int, limit: int = 20) -> lis
     ]
 
 
+async def prefetch_web_evidence(query: str) -> tuple[list[dict], list[dict]]:
+    """Run web search + top pages so the model answers from live sources."""
+    extra_messages: list[dict] = []
+    tool_events: list[dict] = []
+    try:
+        results = await search_web(query, max_results=5)
+    except SearchError:
+        return extra_messages, tool_events
+    if not results:
+        return extra_messages, tool_events
+    payload = json.dumps({"found": True, "results": results})
+    extra_messages.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "prefetch_web_search",
+                    "type": "function",
+                    "function": {"name": "web_search", "arguments": json.dumps({"query": query})},
+                }
+            ],
+        }
+    )
+    extra_messages.append(
+        {"role": "tool", "tool_call_id": "prefetch_web_search", "content": payload}
+    )
+    tool_events.append({"name": "web_search", "arguments": json.dumps({"query": query})})
+
+    async def _one(item: dict) -> tuple[str, dict] | None:
+        url = item.get("url") or ""
+        try:
+            page = await fetch_page(url, max_chars=3500)
+        except SearchError:
+            return None
+        return url, page
+
+    fetched = await asyncio.gather(*[_one(item) for item in results[:2]])
+    for i, item in enumerate(fetched):
+        if item is None:
+            continue
+        url, page = item
+        call_id = f"prefetch_fetch_{i}"
+        extra_messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": "fetch_url", "arguments": json.dumps({"url": url})},
+                    }
+                ],
+            }
+        )
+        extra_messages.append(
+            {"role": "tool", "tool_call_id": call_id, "content": json.dumps({"ok": True, **page})}
+        )
+        tool_events.append({"name": "fetch_url", "arguments": json.dumps({"url": url})})
+    return extra_messages, tool_events
+
+
 async def _run_tool_loop(
     db: AsyncSession,
     user_id: int,
@@ -366,15 +507,20 @@ async def _run_and_persist(
 ) -> tuple[str, list[dict], str | None]:
     history = await recent_history(db, user.id)
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt()},
         *history,
         {"role": "user", "content": user_message},
     ]
     registry = build_registry(db, user.id, llm)
+    seeded_events: list[dict] = []
+    if should_web_search(user_message):
+        extra, seeded_events = await prefetch_web_evidence(user_message)
+        messages.extend(extra)
     try:
         final, tool_events, used_model = await _run_tool_loop(
             db, user.id, messages, registry, llm, model=model
         )
+        tool_events = [*seeded_events, *tool_events]
     except Exception:
         await db.rollback()
         raise

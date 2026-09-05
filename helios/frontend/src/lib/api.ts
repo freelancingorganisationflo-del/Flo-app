@@ -93,6 +93,20 @@ export interface ModelsInfo {
   models: string[];
 }
 
+export interface WebSearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+  source: "instant" | "web";
+}
+
+export interface WebPage {
+  url: string;
+  title: string;
+  text: string;
+  truncated: boolean;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<TokenResponse>("/auth/login", {
@@ -163,6 +177,17 @@ export const api = {
 
   searchDocuments: (q: string) =>
     request<{ results: SearchResult[] }>(`/documents/search?q=${encodeURIComponent(q)}`),
+
+  searchWeb: (q: string, limit?: number) =>
+    request<{ query: string; results: WebSearchHit[] }>(
+      `/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`
+    ),
+
+  fetchUrl: (url: string) =>
+    request<WebPage>("/search/fetch", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
 
   listModels: () => request<ModelsInfo>("/chat/models"),
 

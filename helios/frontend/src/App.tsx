@@ -10,6 +10,7 @@ import { Chat } from "@/pages/Chat";
 import { Tasks } from "@/pages/Tasks";
 import { Memory } from "@/pages/Memory";
 import { Documents } from "@/pages/Documents";
+import { Search } from "@/pages/Search";
 import { Settings } from "@/pages/Settings";
 import { Placeholder } from "@/pages/Placeholder";
 
@@ -46,6 +47,7 @@ export function App() {
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/tools" element={<Placeholder />} />
           <Route path="/automation" element={<Placeholder />} />

@@ -38,3 +38,20 @@ async def client(db_session):
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def stub_chat_web_search(monkeypatch):
+    async def _empty_search(query, max_results=None):
+        return []
+
+    async def _no_fetch(url, max_chars=None):
+        from app.search.service import SearchError
+
+        raise SearchError("stubbed")
+
+    monkeypatch.setattr("app.chat.service.search_web", _empty_search)
+    monkeypatch.setattr("app.chat.service.fetch_page", _no_fetch)

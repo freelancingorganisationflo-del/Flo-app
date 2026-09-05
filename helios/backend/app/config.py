@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     reminder_poll_seconds: float = 30.0
 
+    web_search_max_results: int = 8
+    web_search_timeout_seconds: float = 20.0
+    web_fetch_max_chars: int = 8000
+
     @field_validator("jwt_secret")
     @classmethod
     def _jwt_secret_must_be_strong(cls, v: str) -> str:

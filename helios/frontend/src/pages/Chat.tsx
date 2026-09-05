@@ -17,11 +17,13 @@ const SUGGESTIONS = [
   { icon: "clock", text: "Remind me tomorrow at 5 PM to call Ravi" },
   { icon: "brain", text: "What do you remember about me?" },
   { icon: "tasks", text: "Add a task: finish project report by Friday" },
-  { icon: "sparkles", text: "What's on my plate today?" },
+  { icon: "globe", text: "Search the web for today's AI news" },
 ];
 
 const toolLabels: Record<string, string> = {
   search_documents: "Searching knowledge base",
+  web_search: "Searching the web",
+  fetch_url: "Reading web page",
   create_task: "Creating task",
   save_memory: "Saving memory",
 };

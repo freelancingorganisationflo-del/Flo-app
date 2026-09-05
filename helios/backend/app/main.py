@@ -8,6 +8,7 @@ from .chat.router import router as chat_router
 from .db import Base, engine
 from .memory.router import router as memory_router
 from .rag.router import router as rag_router
+from .search.router import router as search_router
 from .tasks.router import router as tasks_router
 from .tasks.worker import run_reminder_worker
 
@@ -29,6 +30,7 @@ app.include_router(memory_router)
 app.include_router(chat_router)
 app.include_router(tasks_router)
 app.include_router(rag_router)
+app.include_router(search_router)
 
 
 @app.get("/api/health")
