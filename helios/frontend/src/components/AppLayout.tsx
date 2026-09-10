@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { to: "/chat", label: "Chat", icon: "chat", section: "Main" },
   { to: "/memory", label: "Memory", icon: "brain", section: "Main" },
   { to: "/tasks", label: "Tasks", icon: "tasks", section: "Main" },
+  { to: "/search", label: "Web Search", icon: "globe", section: "Workspace" },
   { to: "/documents", label: "Knowledge Base", icon: "book", section: "Workspace" },
   { to: "/tools", label: "Tools & Skills", icon: "tools", section: "Workspace" },
   { to: "/automation", label: "Automation", icon: "zap", section: "Workspace" },
@@ -27,7 +28,7 @@ const navItems: NavItem[] = [
 ];
 
 const mobileNav = navItems.filter((n) =>
-  ["dashboard", "voice", "vision", "chat", "tasks", "memory"].includes(n.to.slice(1))
+  ["dashboard", "voice", "vision", "chat", "search", "tasks", "memory"].includes(n.to.slice(1))
 );
 
 function initials(email: string): string {
