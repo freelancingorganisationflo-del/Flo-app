@@ -9,6 +9,7 @@ import { getSelectedModel, ModelPicker } from "@/components/ModelPicker";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: string;
   tools?: string[];
   model?: string;
 }
@@ -54,9 +55,13 @@ export function Chat() {
   }, [input]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTextRef = useRef<string>("");
+  const lastUserImageRef = useRef<{ file: File; preview: string } | null>(null);
   const autoSentRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -91,18 +96,30 @@ export function Chat() {
     };
   }, []);
 
-  async function send(messageText?: string) {
+  async function send(
+    messageText?: string,
+    image?: { file: File; preview: string } | null
+  ) {
     const text = (messageText ?? input).trim();
-    if (!text || streaming) return;
+    const attachment =
+      image === undefined
+        ? imageFile && imagePreview
+          ? { file: imageFile, preview: imagePreview }
+          : null
+        : image;
+    if ((!text && !attachment) || streaming) return;
     setError(null);
     setInput("");
+    setImageFile(null);
+    setImagePreview(null);
     setStreaming(true);
     lastUserTextRef.current = text;
+    lastUserImageRef.current = attachment;
     const model = getSelectedModel() ?? "auto";
 
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: text },
+      { role: "user", content: text, image: attachment?.preview },
       { role: "assistant", content: "", tools: [] },
     ]);
 
@@ -110,44 +127,56 @@ export function Chat() {
     abortRef.current = abort;
 
     try {
-      await api.streamChat(
-        text,
-        (evt: ChatEvent) => {
-          if (evt.type === "tool") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last.role === "assistant") {
-                next[next.length - 1] = {
-                  ...last,
-                  tools: [...(last.tools ?? []), evt.name ?? "tool"],
-                };
-              }
-              return next;
-            });
-          } else if (evt.type === "delta") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: last.content + (evt.text ?? "") };
-              }
-              return next;
-            });
-          } else if (evt.type === "done" && evt.model) {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last.role === "assistant") {
-                next[next.length - 1] = { ...last, model: evt.model };
-              }
-              return next;
-            });
+      if (attachment) {
+        const res = await api.analyzeImage(attachment.file, text || undefined);
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last.role === "assistant") {
+            next[next.length - 1] = { ...last, content: res.reply, model: res.model };
           }
-        },
-        abort.signal,
-        model
-      );
+          return next;
+        });
+      } else {
+        await api.streamChat(
+          text,
+          (evt: ChatEvent) => {
+            if (evt.type === "tool") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === "assistant") {
+                  next[next.length - 1] = {
+                    ...last,
+                    tools: [...(last.tools ?? []), evt.name ?? "tool"],
+                  };
+                }
+                return next;
+              });
+            } else if (evt.type === "delta") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === "assistant") {
+                  next[next.length - 1] = { ...last, content: last.content + (evt.text ?? "") };
+                }
+                return next;
+              });
+            } else if (evt.type === "done" && evt.model) {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === "assistant") {
+                  next[next.length - 1] = { ...last, model: evt.model };
+                }
+                return next;
+              });
+            }
+          },
+          abort.signal,
+          model
+        );
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setMessages((prev) => {
@@ -170,15 +199,41 @@ export function Chat() {
   }
 
   function regenerate() {
-    if (streaming || !lastUserTextRef.current) return;
+    if (streaming) return;
+    const img = lastUserImageRef.current;
+    if (!lastUserTextRef.current && !img) return;
     setMessages((prev) => {
       if (prev.length >= 2) {
         return prev.slice(0, -1);
       }
       return prev;
     });
-    send(lastUserTextRef.current);
+    void send(lastUserTextRef.current, img);
   }
+
+  function pickImage(f: File | undefined | null) {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      setError("Please choose an image file (PNG, JPEG, WebP, GIF or BMP).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageFile(f);
+      setImagePreview(typeof reader.result === "string" ? reader.result : "");
+      setError(null);
+    };
+    reader.onerror = () => setError("Could not read that image. Try another file.");
+    reader.readAsDataURL(f);
+  }
+
+  function clearImage() {
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const canSend = Boolean(input.trim() || imageFile);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -375,6 +430,13 @@ export function Chat() {
                       : "glass-strong rounded-bl-md border border-line"
                   }`}
                 >
+                  {m.image && (
+                    <img
+                      src={m.image}
+                      alt="Attached"
+                      className="mb-2 rounded-lg max-h-60 w-auto border border-line/40"
+                    />
+                  )}
                   {m.tools && m.tools.length > 0 && !m.content && (
                     <div className="flex items-center gap-2 text-cyan mb-1">
                       <Spinner className="w-3.5 h-3.5" />
@@ -470,6 +532,34 @@ export function Chat() {
         className="shrink-0 px-4 sm:px-6 pb-4 pt-2"
       >
         <div className="max-w-3xl mx-auto">
+          {imagePreview && (
+            <div className="mb-2 flex items-center gap-3 glass rounded-xl p-2 pr-3 w-fit">
+              <img
+                src={imagePreview}
+                alt="Attachment preview"
+                className="h-14 w-14 rounded-lg object-cover border border-line/40"
+              />
+              <span className="text-xs text-grey max-w-[10rem] truncate">
+                {imageFile?.name ?? "Image"}
+              </span>
+              <button
+                type="button"
+                onClick={clearImage}
+                aria-label="Remove image"
+                title="Remove image"
+                className="p-1 rounded-lg text-grey hover:text-red hover:bg-white/[0.06] transition-colors"
+              >
+                <Icon name="x" className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => pickImage(e.target.files?.[0])}
+          />
           <div className="glass-strong rounded-2xl p-1.5 flex items-end gap-2 glow-ring">
             <textarea
               value={input}
@@ -498,6 +588,15 @@ export function Chat() {
               <>
                 <button
                   type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach image"
+                  title="Attach image"
+                  className="p-2.5 rounded-xl text-grey hover:text-cyan hover:bg-white/[0.06] transition-colors"
+                >
+                  <Icon name="paperclip" className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
                   onClick={toggleVoice}
                   aria-label={recording ? "Stop recording" : "Voice input"}
                   title={recording ? "Stop recording" : "Voice input"}
@@ -511,7 +610,7 @@ export function Chat() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!canSend}
                   aria-label="Send message"
                   className="p-2.5 rounded-xl bg-gradient-to-r from-cyan to-blue text-navy font-semibold shadow-glow-sm hover:brightness-110 transition-all disabled:opacity-40 disabled:pointer-events-none"
                 >
