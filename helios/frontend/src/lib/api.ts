@@ -93,6 +93,51 @@ export interface ModelsInfo {
   models: string[];
 }
 
+export interface VoiceConfig {
+  stt_model: string;
+  tts_model: string;
+  tts_voice: string;
+  tts_voices: string[];
+}
+
+export interface VisionConfig {
+  default: string;
+  models: string[];
+}
+
+export interface VisionResult {
+  reply: string;
+  model: string;
+}
+
+const VOICE_KEY = "helios_tts_voice";
+
+export function getSavedVoice(): string | null {
+  return localStorage.getItem(VOICE_KEY);
+}
+
+export function setSavedVoice(voice: string): void {
+  localStorage.setItem(VOICE_KEY, voice);
+}
+
+export function effectiveVoice(configVoice: string | undefined): string | undefined {
+  return getSavedVoice() ?? configVoice;
+}
+
+export function friendlyVoice(id: string): string {
+  const flux = id.match(/^flux-([a-z0-9]+)-en$/);
+  if (flux) return flux[1].charAt(0).toUpperCase() + flux[1].slice(1);
+  const edge = id.match(/^[a-z]{2,3}-[A-Z]{2,3}-([A-Za-z0-9]+)Neural$/);
+  if (edge) return edge[1].replace(/Multilingual$/, "");
+  const parts = id.split("-");
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+}
+
+export interface WakeInfo {
+  text: string;
+  tasks: { id: number; title: string; status: string; due_at: string | null }[];
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<TokenResponse>("/auth/login", {
@@ -165,6 +210,81 @@ export const api = {
     request<{ results: SearchResult[] }>(`/documents/search?q=${encodeURIComponent(q)}`),
 
   listModels: () => request<ModelsInfo>("/chat/models"),
+
+  getVoiceConfig: () => request<VoiceConfig>("/voice/config"),
+
+  getVisionModels: () => request<VisionConfig>("/vision/models"),
+
+  analyzeImage: async (
+    file: File,
+    question?: string,
+    model?: string
+  ): Promise<VisionResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (question?.trim()) form.append("question", question.trim());
+    if (model) form.append("model", model);
+    const token = getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return request<VisionResult>("/vision/analyze", { method: "POST", body: form, headers });
+  },
+
+  wake: () => request<WakeInfo>("/voice/wake", { method: "POST" }),
+
+  stt: async (audio: Blob, filename = "audio.webm"): Promise<string> => {
+    const form = new FormData();
+    form.append("file", audio, filename);
+    const res = await request<{ text: string }>("/voice/stt", { method: "POST", body: form });
+    return res.text;
+  },
+
+  tts: async (text: string, voice?: string): Promise<string> => {
+    const token = getToken();
+    const res = await fetch("/api/voice/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(voice ? { text, voice } : { text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const detail = data?.detail ?? `TTS request failed (${res.status})`;
+      throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  talk: async (text: string, voice?: string): Promise<{ url: string; reply: string }> => {
+    const token = getToken();
+    const res = await fetch("/api/voice/talk", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(voice ? { text, voice } : { text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const detail = data?.detail ?? `Voice reply failed (${res.status})`;
+      throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    const replyHeader = res.headers.get("X-Helios-Reply");
+    let reply = "";
+    if (replyHeader) {
+      try {
+        reply = decodeURIComponent(escape(atob(replyHeader)));
+      } catch {
+        reply = "";
+      }
+    }
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), reply };
+  },
 
   streamChat: async (
     message: string,

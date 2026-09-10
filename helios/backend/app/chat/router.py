@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class ChatRequest(BaseModel):
     message: str
     model: str | None = None
+    spoken: bool = False
 
 
 def _resolve_model(model: str | None, message: str) -> str | None:
@@ -52,7 +53,9 @@ async def chat(
     if not req.message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
     model = _resolve_model(req.model, req.message.strip())
-    final, tool_events, used_model = await run_chat(db, user, req.message.strip(), llm, model=model)
+    final, tool_events, used_model = await run_chat(
+        db, user, req.message.strip(), llm, model=model, spoken=req.spoken
+    )
     return {"reply": final, "tool_events": tool_events, "model": used_model or settings.user_llm_model}
 
 
@@ -68,7 +71,9 @@ async def chat_stream(
     model = _resolve_model(req.model, req.message.strip())
 
     async def event_gen():
-        async for event in stream_chat(db, user, req.message.strip(), llm, model=model):
+        async for event in stream_chat(
+            db, user, req.message.strip(), llm, model=model, spoken=req.spoken
+        ):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

@@ -54,9 +54,12 @@ class LLMClient:
     ) -> ChatResult:
         if not self.api_key:
             raise LLMProviderError("USER_LLM_API_KEY is not configured")
-        payload: dict[str, Any] = {"model": model or self.model, "messages": messages}
+        selected_model = model or self.model
+        payload: dict[str, Any] = {"model": selected_model, "messages": messages}
         if max_tokens or self.max_tokens:
             payload["max_tokens"] = max_tokens or self.max_tokens
+        if selected_model in settings.user_llm_disable_reasoning_models:
+            payload["reasoning"] = {"enabled": False}
         if tools:
             payload["tools"] = tools
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:

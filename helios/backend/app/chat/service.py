@@ -34,6 +34,20 @@ OUT_OF_STEPS_MESSAGE = (
     "I ran out of steps trying to help with that. Please try rephrasing."
 )
 
+# Extra guidance appended when the reply will be spoken aloud by the voice
+# assistant: short, natural sentences, no symbols/emoji, and matching the
+# user's language (Hinglish or English).
+SPOKEN_RULES = (
+    "\n\nVoice mode: reply as if speaking aloud to the user.\n"
+    "- Keep it SHORT: 1-3 sentences, at most two short sentences for simple asks.\n"
+    "- Speak in the same language the user used: Hinglish (Roman Hindi mixed with "
+    "English) if the user writes Hinglish or Hindi, otherwise plain English.\n"
+    "- Never use emojis, markdown, bullet points, headers, code, or URLs.\n"
+    "- Say times, dates and numbers as a person would in conversation "
+    "(for example '8 in the morning', not '08:00').\n"
+    "- For task lists, name at most three tasks in a flowing sentence.\n"
+)
+
 SYSTEM_PROMPT = (
     "You are Helios, a personal AI assistant. Be warm, concise, and helpful.\n\n"
     "You have tools to look up stored facts about the user and save new facts "
@@ -362,11 +376,18 @@ async def _run_tool_loop(
 
 
 async def _run_and_persist(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
+    db: AsyncSession,
+    user: User,
+    user_message: str,
+    llm: LLMClient,
+    model: str | None = None,
+    *,
+    spoken: bool = False,
 ) -> tuple[str, list[dict], str | None]:
     history = await recent_history(db, user.id)
+    system = SYSTEM_PROMPT + (SPOKEN_RULES if spoken else "")
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         *history,
         {"role": "user", "content": user_message},
     ]
@@ -393,15 +414,31 @@ async def _run_and_persist(
 
 
 async def run_chat(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
+    db: AsyncSession,
+    user: User,
+    user_message: str,
+    llm: LLMClient,
+    model: str | None = None,
+    *,
+    spoken: bool = False,
 ) -> tuple[str, list[dict], str | None]:
-    return await _run_and_persist(db, user, user_message, llm, model=model)
+    return await _run_and_persist(
+        db, user, user_message, llm, model=model, spoken=spoken
+    )
 
 
 async def stream_chat(
-    db: AsyncSession, user: User, user_message: str, llm: LLMClient, model: str | None = None
+    db: AsyncSession,
+    user: User,
+    user_message: str,
+    llm: LLMClient,
+    model: str | None = None,
+    *,
+    spoken: bool = False,
 ):
-    final, tool_events, used_model = await _run_and_persist(db, user, user_message, llm, model=model)
+    final, tool_events, used_model = await _run_and_persist(
+        db, user, user_message, llm, model=model, spoken=spoken
+    )
 
     for event in tool_events:
         yield {"type": "tool", "name": event["name"]}

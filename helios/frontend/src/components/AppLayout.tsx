@@ -12,6 +12,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: "/dashboard", label: "Home", icon: "home", section: "Main" },
+  { to: "/voice", label: "Voice", icon: "mic", section: "Main" },
+  { to: "/vision", label: "Vision", icon: "eye", section: "Main" },
   { to: "/chat", label: "Chat", icon: "chat", section: "Main" },
   { to: "/memory", label: "Memory", icon: "brain", section: "Main" },
   { to: "/tasks", label: "Tasks", icon: "tasks", section: "Main" },
@@ -25,7 +27,7 @@ const navItems: NavItem[] = [
 ];
 
 const mobileNav = navItems.filter((n) =>
-  ["dashboard", "chat", "tasks", "memory", "documents"].includes(n.to.slice(1))
+  ["dashboard", "voice", "vision", "chat", "tasks", "memory"].includes(n.to.slice(1))
 );
 
 function initials(email: string): string {
@@ -59,7 +61,6 @@ export function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [listening, setListening] = useState(false);
   const [query, setQuery] = useState("");
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -203,18 +204,12 @@ export function AppLayout() {
 
             {/* voice */}
             <button
-              onClick={() => setListening((l) => !l)}
-              aria-label="Voice input"
-              className={`relative p-2.5 rounded-xl transition-all ${
-                listening
-                  ? "text-navy bg-gradient-to-r from-cyan to-blue shadow-glow-cyan"
-                  : "text-grey hover:text-cyan hover:bg-white/[0.06]"
-              }`}
+              onClick={() => navigate("/voice")}
+              aria-label="Voice assistant"
+              title="Talk to HELIOS"
+              className="relative p-2.5 rounded-xl text-grey hover:text-cyan hover:bg-white/[0.06] transition-colors"
             >
               <Icon name="mic" className="w-5 h-5" />
-              {listening && (
-                <span className="absolute inset-0 rounded-xl border border-cyan/50 animate-[orb-ring_1.8s_ease-out_infinite]" />
-              )}
             </button>
 
             {/* notifications */}

@@ -1,3 +1,5 @@
+import io
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,6 +16,9 @@ STT_MIME = {
     "webm": "audio/webm",
     "aac": "audio/aac",
 }
+
+# Edge (Microsoft neural) voices look like "en-US-ChristopherNeural".
+EDGE_VOICE_RE = re.compile(r"^[a-z]{2,3}-[A-Z]{2,3}-[A-Za-z0-9]+Neural$")
 
 
 class VoiceProviderError(RuntimeError):
@@ -76,15 +81,41 @@ class VoiceClient:
 
     async def synthesize(self, text: str, voice: str | None = None) -> bytes:
         """Synthesize speech from text, returning raw audio bytes (mp3)."""
+        selected = voice or self.tts_voice
+        if selected and EDGE_VOICE_RE.match(selected):
+            return await self._synthesize_edge(text, selected)
+        return await self._synthesize_gateway(text, selected)
+
+    async def _synthesize_edge(self, text: str, voice: str) -> bytes:
+        """Synthesize via Microsoft Edge neural voices — free, unlimited, no key."""
+        try:
+            import edge_tts
+        except ImportError as exc:
+            raise VoiceProviderError(
+                "TTS failed: edge-tts is not installed (pip install edge-tts)"
+            ) from exc
+        buffer = io.BytesIO()
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    buffer.write(chunk["data"])
+        except Exception as exc:
+            raise VoiceProviderError(f"TTS failed: Edge voice provider error: {exc}") from exc
+        data = buffer.getvalue()
+        if not data:
+            raise VoiceProviderError("TTS failed: Edge voice provider returned empty audio")
+        return data
+
+    async def _synthesize_gateway(self, text: str, voice: str | None) -> bytes:
         if not self.api_key:
             raise VoiceProviderError("USER_LLM_API_KEY is not configured")
         payload: dict[str, Any] = {
             "model": self.tts_model,
             "input": text,
             "response_format": "mp3",
+            "voice": voice or self.tts_voice,
         }
-        if voice:
-            payload["voice"] = voice
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
                 f"{self.base_url}/audio/speech",

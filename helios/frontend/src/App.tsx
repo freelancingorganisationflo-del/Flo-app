@@ -12,6 +12,8 @@ import { Memory } from "@/pages/Memory";
 import { Documents } from "@/pages/Documents";
 import { Settings } from "@/pages/Settings";
 import { Placeholder } from "@/pages/Placeholder";
+import { Voice } from "@/pages/Voice";
+import { Vision } from "@/pages/Vision";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -42,6 +44,8 @@ export function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/voice" element={<Voice />} />
+          <Route path="/vision" element={<Vision />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/memory" element={<Memory />} />

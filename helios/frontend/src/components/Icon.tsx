@@ -44,6 +44,12 @@ const paths: Record<string, string> = {
   shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
   link: "M9 15l6-6m-4-3l1.5-1.5a4 4 0 0 1 5.7 5.7L17 12m-4 6l-1.5 1.5a4 4 0 0 1-5.7-5.7L8 14",
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 8v5m0-8h.01",
+  volume: "M11 5L6 9H3v6h3l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M18 6a9 9 0 0 1 0 12",
+  stopVoice: "M6 4h12v16H6z",
+  eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  camera: "M3 8a2 2 0 0 1 2-2h2l2-3h6l2 3h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8zm9 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  upload: "M12 16V4m0 0l-4 4m4-4l4 4M4 20h16",
+  document: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm3 5h4m-4 4h4m-4 4h4",
 };
 
 export function Icon({ name, className = "w-5 h-5" }: IconProps) {

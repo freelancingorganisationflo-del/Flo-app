@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import { api, effectiveVoice, friendlyVoice, getSavedVoice, setSavedVoice } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { getSelectedModel, ModelPicker } from "@/components/ModelPicker";
 
@@ -15,6 +15,28 @@ export function Settings() {
   const [counts, setCounts] = useState({ tasks: 0, memories: 0, documents: 0 });
   const [orbIntensity, setOrbIntensity] = useState(() => localStorage.getItem("helios_orb") ?? "high");
   const [animations, setAnimations] = useState(() => localStorage.getItem("helios_anim") !== "off");
+  const [voices, setVoices] = useState<string[]>([]);
+  const [voice, setVoice] = useState<string>(() => getSavedVoice() ?? "");
+  const [previewing, setPreviewing] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const loadVoice = useCallback(async () => {
+    const cfg = await api.getVoiceConfig();
+    const catalog = cfg.tts_voices ?? [];
+    setVoices(catalog);
+    const saved = getSavedVoice();
+    const target = saved && catalog.includes(saved) ? saved : effectiveVoice(cfg.tts_voice) || "";
+    if (saved && target !== saved) {
+      setSavedVoice(target);
+    }
+    setVoice(target);
+  }, []);
+
+  useEffect(() => {
+    loadVoice().catch(() => {
+      // voice endpoints unavailable; leave defaults
+    });
+  }, [loadVoice]);
 
   const load = useCallback(async () => {
     const [tasks, memories, documents] = await Promise.allSettled([
@@ -43,6 +65,38 @@ export function Settings() {
     setAnimations(next);
     localStorage.setItem("helios_anim", next ? "on" : "off");
     document.documentElement.style.colorScheme = next ? "dark" : "dark";
+  }
+
+  function selectVoice(v: string) {
+    setVoice(v);
+    setSavedVoice(v);
+  }
+
+  async function previewVoice() {
+    audioRef.current?.pause();
+    setPreviewing(true);
+    try {
+      const url = await api.tts("Hello, I am HELIOS. How can I help you today?", voice);
+      await new Promise<void>((resolve) => {
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          audioRef.current = null;
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        audio.onerror = () => {
+          audioRef.current = null;
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        void audio.play();
+      });
+    } catch {
+      // preview failed; keep current voice
+    } finally {
+      setPreviewing(false);
+    }
   }
 
   return (
@@ -131,6 +185,49 @@ export function Settings() {
               </span>
             </button>
           </div>
+        </section>
+
+        {/* assistant voice */}
+        <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "165ms" }}>
+          <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
+            <Icon name="volume" className="w-5 h-5 text-cyan" />
+            HELIOS Voice
+          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1">
+              <label className="block text-sm text-ink mb-2" htmlFor="voice-select">
+                Voice
+              </label>
+              <select
+                id="voice-select"
+                value={voice}
+                onChange={(e) => selectVoice(e.target.value)}
+                className="w-full rounded-lg glass px-3 py-2.5 text-sm text-ink outline-none border border-line focus:border-cyan/50 transition-colors [&>option]:bg-navy3"
+              >
+                {voices.length === 0 && <option value="">Loading voices…</option>}
+                {voices.map((v) => (
+                  <option key={v} value={v}>
+                    {friendlyVoice(v)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={previewVoice}
+              disabled={!voice || previewing}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold glass text-grey hover:text-cyan hover:border-cyan/40 disabled:opacity-40 transition-all"
+            >
+              <Icon name="volume" className="w-4 h-4" />
+              {previewing ? "Speaking…" : "Preview"}
+            </button>
+          </div>
+          <p className="text-xs text-faint mt-3">
+            {voices.length > 0 && voice ? (
+              <>Playing “{friendlyVoice(voice)}” on HELIOS pages · unlimited neural TTS, no quota.</>
+            ) : (
+              <>Loading voice catalogue…</>
+            )}
+          </p>
         </section>
 
         {/* assistant / model */}

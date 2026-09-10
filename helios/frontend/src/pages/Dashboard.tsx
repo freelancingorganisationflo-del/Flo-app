@@ -137,7 +137,23 @@ export function Dashboard() {
 
           {/* orb */}
           <div className="flex flex-col items-center justify-center animate-fade-in">
-            <AiOrb state="idle" size={200} className="animate-float" />
+            <button
+              type="button"
+              onClick={() => navigate("/voice")}
+              aria-label="Open voice assistant"
+              title="Tap to talk to HELIOS"
+              className="group relative rounded-full transition-transform hover:scale-105 active:scale-95"
+            >
+              <AiOrb state="idle" size={200} className="animate-float" />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/voice")}
+              className="mt-3 flex items-center gap-2 px-4 py-2 rounded-full glass text-xs font-semibold text-cyan hover:border-cyan/40 hover:shadow-glow-sm transition-all group"
+            >
+              <Icon name="mic" className="w-3.5 h-3.5 group-hover:animate-blink" />
+              Tap to talk to HELIOS
+            </button>
           </div>
         </div>
 

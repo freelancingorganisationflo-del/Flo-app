@@ -2,8 +2,8 @@
 
 Backend (Plans 1-4): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
 Chat + Memory + Tasks & Reminders + Knowledge Base (RAG). Frontend (PWA,
-Plan 3) is a React/Vite PWA with chat, tasks, memory, and documents UIs.
-Voice module comes in a later plan.
+Plan 3) is a React/Vite PWA with chat, tasks, memory, documents, voice, and
+vision UIs.
 
 ## Run locally
 
@@ -59,6 +59,12 @@ Or run both with the start script:
 Chat tool `search_documents` lets the assistant search the user's knowledge
 base and answer with source attribution.
 
+### Vision (image understanding)
+
+- `GET  /api/vision/models` — configured vision models
+- `POST /api/vision/analyze` — multipart `file` (+ optional `question`/`model`)
+  and gets a multimodal model to describe, OCR, or answer about the image
+
 ## Tests
 
 ```bash
@@ -77,3 +83,8 @@ Only `USER_LLM_*` variables are used for the LLM. Supply your own key in `.env`.
   `postgresql+asyncpg://user:pass@host:5432/helios` (production)
 - `USER_LLM_API_KEY`, `USER_LLM_BASE_URL`, `USER_LLM_MODEL`,
   `USER_LLM_EMBEDDING_MODEL`
+- `USER_VISION_MODEL` — default model used for image analysis
+  (e.g. `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`, a free
+  vision-capable model). Paid vision models like `google/gemini-2.5-flash`
+  work too. Enable image-capable model ids in `USER_LLM_AVAILABLE_MODELS`
+  so they appear in the Vision page picker.

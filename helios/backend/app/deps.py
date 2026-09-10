@@ -29,3 +29,17 @@ from .llm_gateway.client import LLMClient
 
 def get_llm() -> LLMClient:
     return LLMClient()
+
+
+from .voice.client import VoiceClient
+
+
+def get_voice() -> VoiceClient:
+    return VoiceClient()
+
+
+from .vision.client import VisionClient
+
+
+def get_vision() -> VisionClient:
+    return VisionClient()

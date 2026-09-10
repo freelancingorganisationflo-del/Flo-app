@@ -41,6 +41,7 @@ export default {
         "glow-cyan-lg": "0 0 60px rgba(46, 230, 255, 0.45)",
         "glow-violet": "0 0 28px rgba(139, 92, 246, 0.35)",
         "glow-blue": "0 0 28px rgba(61, 139, 255, 0.35)",
+        "glow-red": "0 0 20px rgba(248, 113, 113, 0.45)",
         "glow-sm": "0 0 14px rgba(46, 230, 255, 0.22)",
         "panel": "0 8px 32px rgba(0, 0, 0, 0.45)",
       },

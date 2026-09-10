@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { api, type ChatEvent } from "@/lib/api";
+import { api, effectiveVoice, type ChatEvent } from "@/lib/api";
 import { Spinner } from "@/components/Spinner";
 import { Markdown } from "@/components/Markdown";
 import { Icon } from "@/components/Icon";
@@ -12,6 +12,23 @@ interface ChatMessage {
   tools?: string[];
   model?: string;
 }
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionEventLike {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 const SUGGESTIONS = [
   { icon: "clock", text: "Remind me tomorrow at 5 PM to call Ravi" },
@@ -29,12 +46,25 @@ const toolLabels: Record<string, string> = {
 export function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const inputRef = useRef("");
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTextRef = useRef<string>("");
   const autoSentRef = useRef(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [voiceConfig, setVoiceConfig] = useState<{ tts_voice: string; tts_voices?: string[] } | null>(null);
+  const ttsVoice = effectiveVoice(voiceConfig?.tts_voice);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -153,6 +183,141 @@ export function Chat() {
     send();
   }
 
+  useEffect(() => {
+    api
+      .getVoiceConfig()
+      .then((cfg) => {
+        const saved = effectiveVoice(cfg.tts_voice);
+        const valid = saved && (cfg.tts_voices ?? []).includes(saved);
+        setVoiceConfig({
+          tts_voice: valid ? saved : cfg.tts_voice,
+          tts_voices: cfg.tts_voices,
+        });
+      })
+      .catch(() => {
+        // voice config optional; hide nothing
+      });
+  }, []);
+
+  useEffect(
+    () => () => {
+      recognitionRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      audioRef.current?.pause();
+    },
+    []
+  );
+
+  function startRecording() {
+    const w = window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (Ctor) {
+      const rec = new Ctor();
+      rec.lang = "en-US";
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e) => {
+        const transcript = e.results[0]?.[0]?.transcript ?? "";
+        if (transcript) {
+          const combined = inputRef.current.trim()
+            ? `${inputRef.current.trim()} ${transcript}`
+            : transcript;
+          setInput(combined);
+          send(combined);
+        }
+      };
+      rec.onerror = () => setRecording(false);
+      rec.onend = () => setRecording(false);
+      recognitionRef.current = rec;
+      setRecording(true);
+      rec.start();
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        const mr = new MediaRecorder(stream);
+        recordingChunksRef.current = [];
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+        };
+        mr.onstop = async () => {
+          mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+          const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+          if (blob.size === 0) return;
+          setRecording(false);
+          try {
+            const text = await api.stt(blob);
+            if (text) {
+              setInput((prev) => (prev ? `${prev} ${text}` : text));
+            } else {
+              setError("No speech detected. Try again.");
+            }
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Speech-to-text failed.");
+          }
+        };
+        mediaRecorderRef.current = mr;
+        mediaStreamRef.current = stream;
+        setRecording(true);
+        mr.start();
+      })
+      .catch(() => {
+        setError("Microphone access denied.");
+      });
+  }
+
+  function stopRecording() {
+    const rec = recognitionRef.current;
+    if (rec) {
+      rec.stop();
+      recognitionRef.current = null;
+    }
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") {
+      mr.stop();
+      mediaRecorderRef.current = null;
+    }
+    setRecording(false);
+  }
+
+  function toggleVoice() {
+    if (recording) stopRecording();
+    else startRecording();
+  }
+
+  async function speak(index: number, text: string) {
+    if (speakingId === index) {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setSpeakingId(null);
+      return;
+    }
+    audioRef.current?.pause();
+    try {
+      const url = await api.tts(text, ttsVoice);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        audioRef.current = null;
+        setSpeakingId(null);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        audioRef.current = null;
+        setSpeakingId(null);
+        URL.revokeObjectURL(url);
+        setError("TTS playback failed.");
+      };
+      audioRef.current = audio;
+      setSpeakingId(index);
+      await audio.play();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "TTS failed.");
+    }
+  }
+
   const isEmpty = messages.length === 0;
 
   return (
@@ -243,6 +408,18 @@ export function Chat() {
                         </span>
                       )}
                       <button
+                        onClick={() => void speak(i, m.content)}
+                        aria-label={speakingId === i ? "Stop speaking" : "Speak response"}
+                        title={speakingId === i ? "Stop speaking" : "Speak response"}
+                        className="flex items-center gap-1 text-[11px] text-faint hover:text-cyan transition-colors"
+                      >
+                        <Icon
+                          name={speakingId === i ? "stopVoice" : "volume"}
+                          className="w-3.5 h-3.5"
+                        />
+                        {speakingId === i ? "Stop" : "Speak"}
+                      </button>
+                      <button
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(m.content);
@@ -319,8 +496,14 @@ export function Chat() {
               <>
                 <button
                   type="button"
-                  aria-label="Voice input"
-                  className="p-2.5 rounded-xl text-grey hover:text-cyan hover:bg-white/[0.06] transition-colors"
+                  onClick={toggleVoice}
+                  aria-label={recording ? "Stop recording" : "Voice input"}
+                  title={recording ? "Stop recording" : "Voice input"}
+                  className={`p-2.5 rounded-xl transition-colors ${
+                    recording
+                      ? "bg-red/20 text-red animate-pulse shadow-glow-red"
+                      : "text-grey hover:text-cyan hover:bg-white/[0.06]"
+                  }`}
                 >
                   <Icon name="mic" className="w-5 h-5" />
                 </button>
