@@ -145,10 +145,10 @@ async def _instant_answer(client: httpx.AsyncClient, query: str) -> dict | None:
 
 async def _html_search(client: httpx.AsyncClient, query: str, limit: int) -> list[dict]:
     try:
-        resp = await client.post(
+        resp = await client.get(
             DDG_HTML,
-            data={"q": query},
-            headers={**_headers(), "Content-Type": "application/x-www-form-urlencoded"},
+            params={"q": query},
+            headers=_headers(),
         )
         resp.raise_for_status()
     except httpx.HTTPError as exc:

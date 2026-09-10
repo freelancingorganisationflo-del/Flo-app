@@ -70,6 +70,8 @@ class FakeAsyncClient:
         url = str(url)
         if "api.duckduckgo.com" in url:
             return FakeResponse(url, json_data=IA_JSON, headers={"content-type": "application/json"})
+        if "html.duckduckgo.com" in url:
+            return FakeResponse(url, text=DDG_HTML)
         if url.startswith("https://example.com"):
             html = "<html><head><title>Example</title></head><body><p>Hello world page.</p></body></html>"
             return FakeResponse(url, text=html)
