@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -13,6 +12,8 @@ from ..llm_gateway.tools import Tool, ToolRegistry
 from ..memory.service import add_memory, search_memories
 from ..models import Message, User
 from ..rag.service import search_documents as search_documents_service
+from ..search.decision import decide_web_search
+from ..search.pipeline import gather_evidence
 from ..search.service import SearchError, fetch_page, search_web
 from ..tasks.service import (
     complete_task as complete_task_service,
@@ -51,42 +52,9 @@ SPOKEN_RULES = (
     "- For task lists, name at most three tasks in a flowing sentence.\n"
 )
 
-_SKIP_WEB = re.compile(
-    r"^(hi|hello|hey|thanks|thank you|ok|okay|yo|gm|good morning|"
-    r"good afternoon|good evening)\b",
-    re.I,
-)
-_PERSONAL = re.compile(
-    r"\b(remind me|create a task|add a task|my tasks|remember that|"
-    r"save (a |this )?memory|what do you remember|on my plate|"
-    r"mark .+ done|delete (the |this )?task|my documents|knowledge base)\b",
-    re.I,
-)
-_CLOCK = re.compile(
-    r"\b(what('?s| is)? the time|current time|what time is it|"
-    r"time (is it|now|in)|what('?s| is)? (today'?s )?date|today'?s date|"
-    r"aaj (kya|kaun ?sa) (din|taareekh|date)|aaj ki (taareekh|date))\b",
-    re.I,
-)
-
-
 def should_web_search(message: str) -> bool:
-    """Search the live web for essentially every request (ChatGPT-style).
-
-    Only clearly non-web intents are skipped: pure greetings/smalltalk, the
-    user's own tasks/memories/documents, and clock questions (which use the
-    current_datetime tool instead).
-    """
-    text = message.strip()
-    if not text:
-        return False
-    if _CLOCK.search(text):
-        return False
-    if _PERSONAL.search(text):
-        return False
-    if _SKIP_WEB.search(text) and len(text) < 24:
-        return False
-    return True
+    """Backwards-compatible wrapper around the search decision engine (auto)."""
+    return decide_web_search(message, "auto")
 
 
 def _system_prompt() -> str:
@@ -465,78 +433,6 @@ async def recent_history(db: AsyncSession, user_id: int, limit: int = 20) -> lis
     ]
 
 
-async def _rewrite_search_query(message: str, llm: LLMClient | None) -> str:
-    """Translate/condense the user's message into an English search query."""
-    if llm is None:
-        return message
-    try:
-        result = await llm.complete(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Rewrite the user's message into a short, effective web "
-                        "search query in English. Keep names, dates, and places. "
-                        "Output only the query text, nothing else."
-                    ),
-                },
-                {"role": "user", "content": message},
-            ],
-            max_tokens=48,
-        )
-    except Exception:
-        return message
-    query = (result.content or "").strip().strip('"').strip()
-    if not query:
-        return message
-    return query.splitlines()[0].strip()[:200] or message
-
-
-async def prefetch_web_evidence(
-    query: str, llm: LLMClient | None = None
-) -> tuple[str, list[dict]]:
-    """Run a live search + top pages and return (evidence text, tool events)."""
-    tool_events: list[dict] = []
-    search_query = await _rewrite_search_query(query, llm)
-    try:
-        results = await search_web(search_query, max_results=5)
-    except SearchError:
-        return "", tool_events
-    if not results:
-        return "", tool_events
-    tool_events.append(
-        {"name": "web_search", "arguments": json.dumps({"query": search_query})}
-    )
-
-    lines = [
-        "LIVE SOURCES (from a live web search just now; the ONLY allowed source "
-        "of facts for this reply):"
-    ]
-    for i, item in enumerate(results, 1):
-        lines.append(
-            f"[{i}] {item.get('title', '')} - {item.get('url', '')}\n"
-            f"    {item.get('snippet', '')}"
-        )
-
-    async def _one(item: dict) -> dict | None:
-        url = item.get("url") or ""
-        try:
-            return await fetch_page(url, max_chars=3500)
-        except SearchError:
-            return None
-
-    fetched = await asyncio.gather(*[_one(item) for item in results[:2]])
-    for page in fetched:
-        if not page:
-            continue
-        url = page.get("url", "")
-        tool_events.append({"name": "fetch_url", "arguments": json.dumps({"url": url})})
-        lines.append(
-            f"\n--- FULL PAGE: {page.get('title', '')} ({url})\n{page.get('text', '')}"
-        )
-    return "\n".join(lines), tool_events
-
-
 async def _run_tool_loop(
     db: AsyncSession,
     user_id: int,
@@ -588,17 +484,25 @@ async def _run_and_persist(
     model: str | None = None,
     *,
     spoken: bool = False,
+    mode: str = "auto",
 ) -> tuple[str, list[dict], str | None]:
     history = await recent_history(db, user.id)
     system = _system_prompt() + (SPOKEN_RULES if spoken else "")
     registry = build_registry(db, user.id, llm)
     seeded_events: list[dict] = []
-    if should_web_search(user_message):
-        evidence, seeded_events = await prefetch_web_evidence(user_message, llm)
-        if evidence:
+    if decide_web_search(user_message, mode, has_context=bool(history)):
+        research = await gather_evidence(
+            user_message,
+            llm,
+            history=history,
+            search_fn=search_web,
+            fetch_fn=fetch_page,
+        )
+        seeded_events = research["tool_events"]
+        if research["evidence"]:
             system += (
                 "\n\n"
-                + evidence
+                + research["evidence"]
                 + "\n\nAnswer using ONLY the LIVE SOURCES above. If they do not "
                 "contain the answer, say you could not verify it."
             )
@@ -637,9 +541,10 @@ async def run_chat(
     model: str | None = None,
     *,
     spoken: bool = False,
+    mode: str = "auto",
 ) -> tuple[str, list[dict], str | None]:
     return await _run_and_persist(
-        db, user, user_message, llm, model=model, spoken=spoken
+        db, user, user_message, llm, model=model, spoken=spoken, mode=mode
     )
 
 
@@ -651,9 +556,10 @@ async def stream_chat(
     model: str | None = None,
     *,
     spoken: bool = False,
+    mode: str = "auto",
 ):
     final, tool_events, used_model = await _run_and_persist(
-        db, user, user_message, llm, model=model, spoken=spoken
+        db, user, user_message, llm, model=model, spoken=spoken, mode=mode
     )
 
     for event in tool_events:
