@@ -102,10 +102,21 @@ def test_is_safe_url():
     assert not is_safe_url("not-a-url")
 
 
-async def test_search_web_parses_results(monkeypatch):
-    import app.search.service as svc
+def test_provider_registry_selects_and_rejects_unknown():
+    from app.search.errors import ProviderNotFoundError
+    from app.search.providers import get_search_provider
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+    provider = get_search_provider("duckduckgo")
+    assert provider.name == "duckduckgo"
+    assert get_search_provider() is provider
+    with pytest.raises(ProviderNotFoundError):
+        get_search_provider("does-not-exist")
+
+
+async def test_search_web_parses_results(monkeypatch):
+    import app.search.providers.duckduckgo as ddg
+
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", FakeAsyncClient)
     results = await search_web("artificial intelligence", max_results=8)
     urls = [r["url"] for r in results]
     assert "https://en.wikipedia.org/wiki/Artificial_intelligence" in urls
@@ -122,9 +133,9 @@ async def test_search_web_empty_query():
 
 
 async def test_fetch_page_extracts_text(monkeypatch):
-    import app.search.service as svc
+    import app.search.providers.duckduckgo as ddg
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", FakeAsyncClient)
     page = await fetch_page("https://example.com/article")
     assert page["title"] == "Example"
     assert "Hello world page" in page["text"]
@@ -137,9 +148,9 @@ async def test_fetch_page_blocks_private_urls():
 
 
 async def test_fetch_page_http_error(monkeypatch):
-    import app.search.service as svc
+    import app.search.providers.duckduckgo as ddg
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", FakeAsyncClient)
     with pytest.raises(SearchError):
         await fetch_page("https://blocked.example/page")
 
@@ -167,9 +178,9 @@ async def test_search_router_empty_query(authed_client):
 
 async def test_search_router_success(authed_client, monkeypatch):
     client, headers = authed_client
-    import app.search.service as svc
+    import app.search.providers.duckduckgo as ddg
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", FakeAsyncClient)
     resp = await client.get("/api/search", params={"q": "ai", "limit": 5}, headers=headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -181,9 +192,9 @@ async def test_search_router_success(authed_client, monkeypatch):
 
 async def test_fetch_router_success(authed_client, monkeypatch):
     client, headers = authed_client
-    import app.search.service as svc
+    import app.search.providers.duckduckgo as ddg
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", FakeAsyncClient)
     resp = await client.post(
         "/api/search/fetch", json={"url": "https://example.com/article"}, headers=headers
     )
@@ -199,13 +210,13 @@ async def test_fetch_router_rejects_private(authed_client):
     assert resp.status_code == 400
 
 async def test_fetch_page_blocks_redirect_to_private(monkeypatch):
-    import app.search.service as svc
+    import app.search.providers.duckduckgo as ddg
 
     class RedirectClient(FakeAsyncClient):
         async def get(self, url, **kwargs):
             return FakeResponse("http://127.0.0.1/secret", text="nope")
 
-    monkeypatch.setattr(svc.httpx, "AsyncClient", RedirectClient)
+    monkeypatch.setattr(ddg.httpx, "AsyncClient", RedirectClient)
     with pytest.raises(SearchError):
         await fetch_page("https://example.com/redirect")
 

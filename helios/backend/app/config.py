@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     web_search_max_results: int = 8
     web_search_timeout_seconds: float = 20.0
     web_fetch_max_chars: int = 8000
+    search_provider: str = "duckduckgo"
+    search_api_key: str = ""
 
     @field_validator("jwt_secret")
     @classmethod
