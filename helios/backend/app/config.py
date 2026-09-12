@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     web_search_max_queries: int = 3
     web_search_results_per_query: int = 5
     web_fetch_max_pages: int = 2
+    web_search_cache_ttl_seconds: int = 300
     search_provider: str = "duckduckgo"
     search_api_key: str = ""
 

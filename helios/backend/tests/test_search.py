@@ -209,6 +209,34 @@ async def test_fetch_router_rejects_private(authed_client):
     resp = await client.post("/api/search/fetch", json={"url": "http://127.0.0.1/x"}, headers=headers)
     assert resp.status_code == 400
 
+async def test_search_cache_reuses_results(monkeypatch):
+    from app.search import cache
+    from app.search.providers import get_search_provider
+    from app.search.service import search_web
+
+    cache.clear()
+    provider = get_search_provider()
+    calls = {"n": 0}
+
+    async def fake_search(query, max_results):
+        calls["n"] += 1
+        return [
+            {
+                "title": "x",
+                "url": "https://example.com/cache",
+                "snippet": "s",
+                "source": "web",
+            }
+        ]
+
+    monkeypatch.setattr(provider, "search", fake_search)
+    first = await search_web("cache-test-query")
+    second = await search_web("cache-test-query")
+    assert calls["n"] == 1
+    assert first == second
+    cache.clear()
+
+
 async def test_fetch_page_blocks_redirect_to_private(monkeypatch):
     import app.search.providers.duckduckgo as ddg
 

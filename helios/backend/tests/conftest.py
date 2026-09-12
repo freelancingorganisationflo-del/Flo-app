@@ -45,6 +45,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def stub_chat_web_search(monkeypatch):
+    from app.search.cache import clear as _clear_search_cache
+
+    _clear_search_cache()
+
     async def _empty_search(query, max_results=None):
         return []
 
