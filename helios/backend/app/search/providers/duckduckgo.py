@@ -130,6 +130,8 @@ class DuckDuckGoProvider(SearchProvider):
                 continue
             snippet_el = result.select_one(".result__snippet")
             snippet_text = snippet_el.get_text(" ", strip=True) if snippet_el else ""
+            ts_el = result.select_one(".result__timestamp")
+            published = ts_el.get_text(" ", strip=True) if ts_el else None
             title = link.get_text(" ", strip=True)
             items.append(
                 {
@@ -137,6 +139,7 @@ class DuckDuckGoProvider(SearchProvider):
                     "url": href,
                     "snippet": snippet(snippet_text),
                     "source": "web",
+                    "published": published,
                 }
             )
             if len(items) >= limit:

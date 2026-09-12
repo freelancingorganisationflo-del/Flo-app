@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     web_search_max_results: int = 8
     web_search_timeout_seconds: float = 20.0
     web_fetch_max_chars: int = 8000
+    web_search_max_queries: int = 3
+    web_search_results_per_query: int = 5
+    web_fetch_max_pages: int = 2
     search_provider: str = "duckduckgo"
     search_api_key: str = ""
 

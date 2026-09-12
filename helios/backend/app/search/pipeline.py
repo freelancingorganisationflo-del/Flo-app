@@ -1,4 +1,4 @@
-"""Web research pipeline: query rewriting, source gathering and answering.
+"""Web research pipeline: query planning, source gathering and answering.
 
 Provider-independent: the search/fetch callables are injected so this module
 can be reused by both the chat flow and the /api/web-search endpoint, and so
@@ -7,6 +7,8 @@ tests can stub the network.
 
 import asyncio
 import json
+import re
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -30,6 +32,19 @@ RESEARCH_ANSWER_RULES = (
 )
 
 _FETCH_CHAR_LIMIT = 3500
+_STOPWORDS = {
+    "the", "and", "for", "are", "was", "were", "with", "from", "that", "this",
+    "what", "when", "where", "which", "who", "how", "why", "does", "did", "you",
+    "your", "its", "it's", "into", "about", "over", "under", "kya", "hai", "ka",
+    "ki", "ke", "ko", "me", "mein", "kaun", "kab", "kahan", "aap", "aur",
+}
+_REPUTABLE = {
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com",
+    "thehindu.com", "indianexpress.com", "wikipedia.org", "en.wikipedia.org",
+    "who.int", "un.org", "nasa.gov", "nature.com", "science.org",
+}
+_AUTHORITY_SUFFIX = (".gov", ".gov.uk", ".gov.in", ".edu", ".ac.uk", ".ac.in", ".edu.au")
+_OFFICIAL_PREFIX = ("docs.", "developer.", "developers.", "support.")
 
 
 def domain_of(url: str) -> str:
@@ -54,7 +69,76 @@ def normalize_source(item: dict[str, Any]) -> dict[str, Any] | None:
         "source": item.get("source") or "web",
         "published": item.get("published"),
         "fetched": False,
+        "relevance": 0.0,
+        "quality": 0.0,
+        "freshness": 0.0,
+        "score": 0.0,
     }
+
+
+def _tokens(text: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {w for w in words if len(w) > 2 and w not in _STOPWORDS}
+
+
+def relevance_score(query: str, source: dict) -> float:
+    query_tokens = _tokens(query)
+    if not query_tokens:
+        return 0.0
+    source_tokens = _tokens(f"{source.get('title', '')} {source.get('snippet', '')}")
+    if not source_tokens:
+        return 0.0
+    return len(query_tokens & source_tokens) / len(query_tokens)
+
+
+def quality_score(source: dict) -> float:
+    domain = source.get("domain", "")
+    if not domain:
+        return 0.2
+    if domain.endswith(_AUTHORITY_SUFFIX):
+        return 1.0
+    if domain in _REPUTABLE:
+        return 0.9
+    if domain.startswith(_OFFICIAL_PREFIX):
+        return 0.9
+    if domain.endswith(".org"):
+        return 0.7
+    return 0.4
+
+
+def freshness_score(source: dict) -> float:
+    published = source.get("published") or ""
+    match = re.search(r"(20\d{2})", published)
+    if not match:
+        return 0.5
+    year = int(match.group(1))
+    current = datetime.now(timezone.utc).year
+    if year >= current:
+        return 1.0
+    if year == current - 1:
+        return 0.7
+    return 0.3
+
+
+def _is_spam(source: dict) -> bool:
+    url = source.get("url", "").lower()
+    domain = source.get("domain", "")
+    if not domain or "." not in domain:
+        return True
+    return any(hint in url for hint in ("/ad/", "/adclick", "sponsored", "/click?"))
+
+
+def rank_sources(query: str, sources: list[dict]) -> list[dict]:
+    ranked: list[dict] = []
+    for src in sources:
+        src["relevance"] = round(relevance_score(query, src), 3)
+        src["quality"] = round(quality_score(src), 3)
+        src["freshness"] = round(freshness_score(src), 3)
+        src["score"] = round(
+            0.5 * src["relevance"] + 0.3 * src["quality"] + 0.2 * src["freshness"], 3
+        )
+        ranked.append(src)
+    return sorted(ranked, key=lambda s: (s["score"], s["quality"]), reverse=True)
 
 
 def _format_history(history: list[dict] | None, limit: int = 4) -> list[dict]:
@@ -67,35 +151,60 @@ def _format_history(history: list[dict] | None, limit: int = 4) -> list[dict]:
     ]
 
 
-async def rewrite_search_query(
+def _clean_query(line: str) -> str:
+    line = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip().strip('"').strip()
+    return line[:200]
+
+
+async def plan_queries(
     message: str, llm: LLMClient | None, history: list[dict] | None = None
-) -> str:
-    """Translate/condense the message into an English search query."""
+) -> list[str]:
+    """Return 1..max_queries English search queries for the message."""
+    fallback = [message.strip()] if message.strip() else []
     if llm is None:
-        return message
+        return fallback
+    limit = max(1, settings.web_search_max_queries)
     try:
         result = await llm.complete(
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "Rewrite the user's message into a short, effective web "
-                        "search query in English. Use the conversation context to "
-                        "resolve pronouns like it/this/that. Keep names, dates and "
-                        "places. Output only the query text, nothing else."
+                        "Rewrite the user's message into effective web search "
+                        "queries in English. Use the conversation context to "
+                        "resolve pronouns like it/this/that. For simple questions "
+                        f"return a single query; for complex research return up to "
+                        f"{limit} complementary queries, one per line. Keep names, "
+                        "dates and places. Output only the queries, nothing else."
                     ),
                 },
                 *_format_history(history),
                 {"role": "user", "content": message},
             ],
-            max_tokens=48,
+            max_tokens=160,
         )
     except Exception:
-        return message
-    query = (result.content or "").strip().strip('"').strip()
-    if not query:
-        return message
-    return query.splitlines()[0].strip()[:200] or message
+        return fallback
+    queries: list[str] = []
+    seen: set[str] = set()
+    for raw in (result.content or "").splitlines():
+        query = _clean_query(raw)
+        key = query.lower()
+        if not query or key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+        if len(queries) >= limit:
+            break
+    return queries or fallback
+
+
+async def rewrite_search_query(
+    message: str, llm: LLMClient | None, history: list[dict] | None = None
+) -> str:
+    """Backwards-compatible single-query helper."""
+    queries = await plan_queries(message, llm, history)
+    return queries[0] if queries else message
 
 
 def _build_evidence(sources: list[dict], pages: dict[str, dict]) -> str:
@@ -121,10 +230,10 @@ async def gather_evidence(
     search_fn,
     fetch_fn,
     max_results: int | None = None,
-    max_pages: int = 2,
+    max_pages: int | None = None,
     fetch_chars: int = _FETCH_CHAR_LIMIT,
 ) -> dict[str, Any]:
-    """Run the search + fetch pipeline and return structured evidence."""
+    """Run the multi-query search + fetch pipeline and return ranked evidence."""
     result: dict[str, Any] = {
         "searched": False,
         "queries": [],
@@ -132,34 +241,48 @@ async def gather_evidence(
         "evidence": "",
         "tool_events": [],
     }
-    search_query = await rewrite_search_query(query, llm, history)
-    try:
-        raw = await search_fn(
-            search_query, max_results=max_results or settings.web_search_max_results
-        )
-    except SearchError:
-        return result
-    if not raw:
+    queries = await plan_queries(query, llm, history)
+    total_limit = max_results or settings.web_search_max_results
+    per_query = settings.web_search_results_per_query
+
+    raw_results: list[dict] = []
+    hit_queries: list[str] = []
+    for search_query in queries:
+        try:
+            items = await search_fn(search_query, max_results=per_query)
+        except SearchError:
+            items = []
+        if items:
+            hit_queries.append(search_query)
+            result["tool_events"].append(
+                {"name": "web_search", "arguments": json.dumps({"query": search_query})}
+            )
+            raw_results.extend(items)
+    if not raw_results:
         return result
 
-    seen: set[str] = set()
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
     sources: list[dict] = []
-    for item in raw:
+    for item in raw_results:
         src = normalize_source(item)
-        if src is None or src["url"] in seen:
+        if src is None or _is_spam(src) or src["url"] in seen_urls:
             continue
-        seen.add(src["url"])
+        title_key = (src["domain"], re.sub(r"\W+", "", src["title"].lower())[:60])
+        if title_key in seen_titles:
+            continue
+        seen_urls.add(src["url"])
+        seen_titles.add(title_key)
         sources.append(src)
     if not sources:
         return result
 
+    ranked = rank_sources(query, sources)[:total_limit]
     result["searched"] = True
-    result["queries"] = [search_query]
-    result["tool_events"].append(
-        {"name": "web_search", "arguments": json.dumps({"query": search_query})}
-    )
+    result["queries"] = hit_queries or queries
 
     pages: dict[str, dict] = {}
+    page_limit = max_pages if max_pages is not None else settings.web_fetch_max_pages
 
     async def _fetch(src: dict) -> tuple[str, dict | None]:
         try:
@@ -168,7 +291,7 @@ async def gather_evidence(
             return src["url"], None
         return src["url"], page
 
-    fetched = await asyncio.gather(*[_fetch(s) for s in sources[:max_pages]])
+    fetched = await asyncio.gather(*[_fetch(s) for s in ranked[:page_limit]])
     for url, page in fetched:
         if not page:
             continue
@@ -176,12 +299,12 @@ async def gather_evidence(
         result["tool_events"].append(
             {"name": "fetch_url", "arguments": json.dumps({"url": url})}
         )
-    for src in sources:
+    for src in ranked:
         if src["url"] in pages:
             src["fetched"] = True
 
-    result["sources"] = sources
-    result["evidence"] = _build_evidence(sources, pages)
+    result["sources"] = ranked
+    result["evidence"] = _build_evidence(ranked, pages)
     return result
 
 

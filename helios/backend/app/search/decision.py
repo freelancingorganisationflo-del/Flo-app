@@ -21,9 +21,10 @@ _SKIP_WEB = re.compile(
     re.I,
 )
 _PERSONAL = re.compile(
-    r"\b(remind me|create a task|add a task|my tasks|remember that|"
-    r"save (a |this )?memory|what do you remember|on my plate|"
-    r"mark .+ done|delete (the |this )?task|my documents|knowledge base)\b",
+    r"\b(remind me|create a task|add a task|make (a |me a )?(task|reminder|note)|"
+    r"my tasks|remember that|save (a |this )?memory|what do you remember|"
+    r"on my plate|mark .+ done|delete (the |this )?(task|reminder)|"
+    r"my documents|knowledge base)\b",
     re.I,
 )
 _CLOCK = re.compile(
