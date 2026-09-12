@@ -30,10 +30,28 @@ class SearchLLM(LLMClient):
             },
         )
 
-    async def complete(self, messages, tools=None, model=None):
+    async def complete(self, messages, tools=None, model=None, max_tokens=None):
         if tools:
             self.schemas.append(tools)
+        system_text = " ".join(
+            m.get("content") or "" for m in messages if m.get("role") == "system"
+        )
         last = messages[-1]
+        if "Rewrite" in system_text:
+            return ChatResult(
+                content="president of france",
+                tool_calls=[],
+                assistant_message={"role": "assistant", "content": "president of france"},
+            )
+        if "from a live web search just now" in system_text:
+            return ChatResult(
+                content="Here is what I found on the web.",
+                tool_calls=[],
+                assistant_message={
+                    "role": "assistant",
+                    "content": "Here is what I found on the web.",
+                },
+            )
         if last["role"] == "tool":
             return ChatResult(
                 content="Here is what I found on the web.",
@@ -132,6 +150,62 @@ def test_should_web_search_detects_questions():
     assert should_web_search("latest AI news") is True
     assert should_web_search("kya aaj weather kaisa hai") is True
     assert should_web_search("Explain quantum computing simply") is True
+
+
+def test_should_web_search_handles_short_factual_queries():
+    # Short keyword-style queries (no question word) must still hit the web.
+    assert should_web_search("Neet exam date") is True
+    assert should_web_search("Ssc chsl exam date") is True
+    assert should_web_search("modi") is True
+
+
+def test_should_web_search_skips_clock_questions():
+    assert should_web_search("what is the current time in USA?") is False
+    assert should_web_search("aaj kya din hai") is False
+    assert should_web_search("what's today's date?") is False
+
+
+async def test_current_datetime_tool(db_session):
+    from app.chat.service import build_registry
+
+    registry = build_registry(db_session, 1, SearchLLM())
+    names = {t["function"]["name"] for t in registry.schema()}
+    assert "current_datetime" in names
+    import json
+
+    out = json.loads(await registry.execute("current_datetime", '{"timezone_name": "UTC"}'))
+    assert out["timezone"] == "UTC"
+    assert "iso" in out and "human" in out
+
+
+async def test_factual_question_uses_rewritten_english_query(authed_client, search_llm, monkeypatch):
+    client, headers = authed_client
+    searches: list[str] = []
+
+    async def fake_search(query, max_results=None):
+        searches.append(query)
+        return [
+            {
+                "title": "France",
+                "url": "https://example.com/france",
+                "snippet": "European country.",
+                "source": "web",
+            }
+        ]
+
+    async def fake_fetch(url, max_chars=None):
+        return {"url": url, "title": "France", "text": "France is in Europe.", "truncated": False}
+
+    import app.chat.service as chat_service
+
+    monkeypatch.setattr(chat_service, "search_web", fake_search)
+    monkeypatch.setattr(chat_service, "fetch_page", fake_fetch)
+    resp = await client.post(
+        "/api/chat", json={"message": "France ke president kaun hai?"}, headers=headers
+    )
+    assert resp.status_code == 200
+    # The Hinglish message must be translated into an English search query.
+    assert searches == ["president of france"]
 
 
 async def test_chat_auto_searches_the_web_for_factual_questions(authed_client, search_llm, monkeypatch):

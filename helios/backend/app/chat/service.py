@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,41 +62,54 @@ _PERSONAL = re.compile(
     r"mark .+ done|delete (the |this )?task|my documents|knowledge base)\b",
     re.I,
 )
-_ASK = re.compile(
-    r"\?|\b(who|what|when|where|why|how|which|latest|news|today|current|"
-    r"price|weather|score|stock|explain|define|search|find|look up|"
-    r"tell me|kya|kaun|kab|kahan|kyun|kaise)\b",
+_CLOCK = re.compile(
+    r"\b(what('?s| is)? the time|current time|what time is it|"
+    r"time (is it|now|in)|what('?s| is)? (today'?s )?date|today'?s date|"
+    r"aaj (kya|kaun ?sa) (din|taareekh|date)|aaj ki (taareekh|date))\b",
     re.I,
 )
 
 
 def should_web_search(message: str) -> bool:
+    """Search the live web for essentially every request (ChatGPT-style).
+
+    Only clearly non-web intents are skipped: pure greetings/smalltalk, the
+    user's own tasks/memories/documents, and clock questions (which use the
+    current_datetime tool instead).
+    """
     text = message.strip()
-    if len(text) < 4:
+    if not text:
         return False
-    if _SKIP_WEB.search(text) and len(text) < 24:
+    if _CLOCK.search(text):
         return False
     if _PERSONAL.search(text):
         return False
-    if _ASK.search(text):
-        return True
-    return len(text.split()) >= 5
+    if _SKIP_WEB.search(text) and len(text) < 24:
+        return False
+    return True
 
 
 def _system_prompt() -> str:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
+    clock = now.strftime("%A, %d %B %Y, %H:%M UTC")
     return (
         "You are Helios, a personal AI assistant. Be warm, concise, and accurate.\n"
-        f"Today's date is {today} (UTC).\n\n"
-        "Ground factual answers in live web evidence. If web search results or "
-        "fetched pages are already in this conversation, use them. Do not invent "
-        "facts, dates, names, or numbers. If sources disagree or are thin, say so.\n"
-        "Cite 2-4 sources as markdown links at the end of factual answers.\n\n"
+        f"Current date and time: {clock}.\n\n"
+        "ANSWER RULES (follow strictly):\n"
+        "1. For any factual claim about the world (people, dates, events, prices, "
+        "news, statistics), use ONLY the live evidence provided in a 'LIVE SOURCES' "
+        "block or returned by the web_search / fetch_url tools in this conversation. "
+        "Never rely on your own memory for these.\n"
+        "2. Quote dates, numbers, and names exactly as they appear in the sources. "
+        "Do not round, shift, or invent them.\n"
+        "3. If the sources do not contain the answer, or are thin or conflicting, "
+        "say clearly that you could not verify it from live sources. Do NOT guess.\n"
+        "4. Cite 2-4 sources as markdown links at the end of factual answers.\n\n"
         "Tools:\n"
-        "- web_search: use for current events, news, facts, prices, people, "
-        "places, or anything you are not certain about. Prefer a focused query.\n"
-        "- fetch_url: after web_search, read the 1-2 most relevant pages before "
-        "answering in depth.\n"
+        "- web_search: focused query for current events, news, or facts.\n"
+        "- fetch_url: after web_search, read the 1-2 most relevant pages.\n"
+        "- current_datetime: the real current date/time. Use for 'what time/date is "
+        "it' or a specific timezone; never guess the time.\n"
         "- search_memory / save_memory: personal facts about the user.\n"
         "- search_documents: the user's private knowledge base only.\n"
         "- create_task / list_tasks / complete_task / update_task / delete_task: "
@@ -144,6 +158,26 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
         except SearchError as exc:
             return json.dumps({"ok": False, "error": str(exc)})
         return json.dumps({"ok": True, **page})
+
+    async def current_datetime_handler(timezone_name: str | None = None) -> str:
+        tz = timezone.utc
+        label = "UTC"
+        if timezone_name:
+            try:
+                tz = ZoneInfo(timezone_name)
+                label = timezone_name
+            except Exception:
+                tz = timezone.utc
+                label = "UTC"
+        now = datetime.now(tz)
+        return json.dumps(
+            {
+                "iso": now.isoformat(),
+                "human": now.strftime("%A, %d %B %Y, %I:%M %p %Z"),
+                "timezone": label,
+                "utc_offset": now.strftime("%z"),
+            }
+        )
 
     async def create_task_handler(
         title: str,
@@ -304,6 +338,27 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
     )
     registry.register(
         Tool(
+            name="current_datetime",
+            description=(
+                "Get the real current date and time. Use for any question about the "
+                "current time or date, optionally for an IANA timezone such as "
+                "'Asia/Kolkata' or 'America/New_York'. Never guess the time."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "timezone_name": {
+                        "type": "string",
+                        "description": "IANA timezone, e.g. 'Asia/Kolkata'. Defaults to UTC.",
+                    }
+                },
+                "required": [],
+            },
+            handler=current_datetime_handler,
+        )
+    )
+    registry.register(
+        Tool(
             name="create_task",
             description="Create a task or reminder for the user.",
             parameters={
@@ -410,67 +465,76 @@ async def recent_history(db: AsyncSession, user_id: int, limit: int = 20) -> lis
     ]
 
 
-async def prefetch_web_evidence(query: str) -> tuple[list[dict], list[dict]]:
-    """Run web search + top pages so the model answers from live sources."""
-    extra_messages: list[dict] = []
-    tool_events: list[dict] = []
+async def _rewrite_search_query(message: str, llm: LLMClient | None) -> str:
+    """Translate/condense the user's message into an English search query."""
+    if llm is None:
+        return message
     try:
-        results = await search_web(query, max_results=5)
-    except SearchError:
-        return extra_messages, tool_events
-    if not results:
-        return extra_messages, tool_events
-    payload = json.dumps({"found": True, "results": results})
-    extra_messages.append(
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
+        result = await llm.complete(
+            messages=[
                 {
-                    "id": "prefetch_web_search",
-                    "type": "function",
-                    "function": {"name": "web_search", "arguments": json.dumps({"query": query})},
-                }
+                    "role": "system",
+                    "content": (
+                        "Rewrite the user's message into a short, effective web "
+                        "search query in English. Keep names, dates, and places. "
+                        "Output only the query text, nothing else."
+                    ),
+                },
+                {"role": "user", "content": message},
             ],
-        }
-    )
-    extra_messages.append(
-        {"role": "tool", "tool_call_id": "prefetch_web_search", "content": payload}
-    )
-    tool_events.append({"name": "web_search", "arguments": json.dumps({"query": query})})
+            max_tokens=48,
+        )
+    except Exception:
+        return message
+    query = (result.content or "").strip().strip('"').strip()
+    if not query:
+        return message
+    return query.splitlines()[0].strip()[:200] or message
 
-    async def _one(item: dict) -> tuple[str, dict] | None:
+
+async def prefetch_web_evidence(
+    query: str, llm: LLMClient | None = None
+) -> tuple[str, list[dict]]:
+    """Run a live search + top pages and return (evidence text, tool events)."""
+    tool_events: list[dict] = []
+    search_query = await _rewrite_search_query(query, llm)
+    try:
+        results = await search_web(search_query, max_results=5)
+    except SearchError:
+        return "", tool_events
+    if not results:
+        return "", tool_events
+    tool_events.append(
+        {"name": "web_search", "arguments": json.dumps({"query": search_query})}
+    )
+
+    lines = [
+        "LIVE SOURCES (from a live web search just now; the ONLY allowed source "
+        "of facts for this reply):"
+    ]
+    for i, item in enumerate(results, 1):
+        lines.append(
+            f"[{i}] {item.get('title', '')} - {item.get('url', '')}\n"
+            f"    {item.get('snippet', '')}"
+        )
+
+    async def _one(item: dict) -> dict | None:
         url = item.get("url") or ""
         try:
-            page = await fetch_page(url, max_chars=3500)
+            return await fetch_page(url, max_chars=3500)
         except SearchError:
             return None
-        return url, page
 
     fetched = await asyncio.gather(*[_one(item) for item in results[:2]])
-    for i, item in enumerate(fetched):
-        if item is None:
+    for page in fetched:
+        if not page:
             continue
-        url, page = item
-        call_id = f"prefetch_fetch_{i}"
-        extra_messages.append(
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {"name": "fetch_url", "arguments": json.dumps({"url": url})},
-                    }
-                ],
-            }
-        )
-        extra_messages.append(
-            {"role": "tool", "tool_call_id": call_id, "content": json.dumps({"ok": True, **page})}
-        )
+        url = page.get("url", "")
         tool_events.append({"name": "fetch_url", "arguments": json.dumps({"url": url})})
-    return extra_messages, tool_events
+        lines.append(
+            f"\n--- FULL PAGE: {page.get('title', '')} ({url})\n{page.get('text', '')}"
+        )
+    return "\n".join(lines), tool_events
 
 
 async def _run_tool_loop(
@@ -527,16 +591,22 @@ async def _run_and_persist(
 ) -> tuple[str, list[dict], str | None]:
     history = await recent_history(db, user.id)
     system = _system_prompt() + (SPOKEN_RULES if spoken else "")
+    registry = build_registry(db, user.id, llm)
+    seeded_events: list[dict] = []
+    if should_web_search(user_message):
+        evidence, seeded_events = await prefetch_web_evidence(user_message, llm)
+        if evidence:
+            system += (
+                "\n\n"
+                + evidence
+                + "\n\nAnswer using ONLY the LIVE SOURCES above. If they do not "
+                "contain the answer, say you could not verify it."
+            )
     messages = [
         {"role": "system", "content": system},
         *history,
         {"role": "user", "content": user_message},
     ]
-    registry = build_registry(db, user.id, llm)
-    seeded_events: list[dict] = []
-    if should_web_search(user_message):
-        extra, seeded_events = await prefetch_web_evidence(user_message)
-        messages.extend(extra)
     try:
         final, tool_events, used_model = await _run_tool_loop(
             db, user.id, messages, registry, llm, model=model

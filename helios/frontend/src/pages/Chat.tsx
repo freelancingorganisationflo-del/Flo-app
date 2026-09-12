@@ -42,6 +42,7 @@ const toolLabels: Record<string, string> = {
   search_documents: "Searching knowledge base",
   web_search: "Searching the web",
   fetch_url: "Reading web page",
+  current_datetime: "Checking the time",
   create_task: "Creating task",
   save_memory: "Saving memory",
 };
