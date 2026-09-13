@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { api, effectiveVoice, type ChatEvent } from "@/lib/api";
+import { api, effectiveVoice, type ChatEvent, type ChatSource } from "@/lib/api";
 import { Spinner } from "@/components/Spinner";
 import { Markdown } from "@/components/Markdown";
 import { Icon } from "@/components/Icon";
@@ -12,6 +12,8 @@ interface ChatMessage {
   image?: string;
   tools?: string[];
   model?: string;
+  stage?: string;
+  sources?: ChatSource[];
 }
 
 interface SpeechRecognitionLike {
@@ -47,6 +49,28 @@ const toolLabels: Record<string, string> = {
   save_memory: "Saving memory",
 };
 
+const stageLabels: Record<string, string> = {
+  searching: "Searching the web",
+  reading: "Reading sources",
+  analyzing: "Analyzing information",
+  generating: "Generating answer",
+};
+
+type SearchMode = "auto" | "web" | "off";
+
+const SEARCH_MODE_KEY = "helios_search_mode";
+
+const SEARCH_MODES: { value: SearchMode; label: string; title: string }[] = [
+  { value: "auto", label: "Auto", title: "Let HELIOS decide when to search" },
+  { value: "web", label: "Web", title: "Always search the web" },
+  { value: "off", label: "Off", title: "Never search the web" },
+];
+
+function getSavedMode(): SearchMode {
+  const value = localStorage.getItem(SEARCH_MODE_KEY);
+  return value === "web" || value === "off" ? value : "auto";
+}
+
 export function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -56,6 +80,7 @@ export function Chat() {
   }, [input]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchMode, setSearchMode] = useState<SearchMode>(getSavedMode);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +100,11 @@ export function Chat() {
   const ttsVoice = effectiveVoice(voiceConfig?.tts_voice);
   const location = useLocation();
   const navigate = useNavigate();
+
+  function changeMode(mode: SearchMode) {
+    setSearchMode(mode);
+    localStorage.setItem(SEARCH_MODE_KEY, mode);
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -154,6 +184,24 @@ export function Chat() {
                 }
                 return next;
               });
+            } else if (evt.type === "stage") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === "assistant") {
+                  next[next.length - 1] = { ...last, stage: evt.stage };
+                }
+                return next;
+              });
+            } else if (evt.type === "sources") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last.role === "assistant") {
+                  next[next.length - 1] = { ...last, sources: evt.sources ?? [] };
+                }
+                return next;
+              });
             } else if (evt.type === "delta") {
               setMessages((prev) => {
                 const next = [...prev];
@@ -175,7 +223,8 @@ export function Chat() {
             }
           },
           abort.signal,
-          model
+          model,
+          searchMode
         );
       }
     } catch (e) {
@@ -438,13 +487,15 @@ export function Chat() {
                       className="mb-2 rounded-lg max-h-60 w-auto border border-line/40"
                     />
                   )}
-                  {m.tools && m.tools.length > 0 && !m.content && (
+                  {!m.content && (m.stage || (m.tools && m.tools.length > 0)) && (
                     <div className="flex items-center gap-2 text-cyan mb-1">
                       <Spinner className="w-3.5 h-3.5" />
                       <span className="text-xs font-medium">
-                        {m.tools
-                          .map((t) => toolLabels[t] ?? `Using ${t}`)
-                          .join(" · ")}
+                        {m.stage
+                          ? stageLabels[m.stage] ?? m.stage
+                          : (m.tools ?? [])
+                              .map((t) => toolLabels[t] ?? `Using ${t}`)
+                              .join(" · ")}
                         …
                       </span>
                     </div>
@@ -464,6 +515,34 @@ export function Chat() {
                       />
                     </div>
                   ) : null}
+                  {m.role === "assistant" && m.sources && m.sources.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-line/40">
+                      <p className="text-[11px] font-semibold text-grey mb-1.5 flex items-center gap-1.5">
+                        <Icon name="globe" className="w-3 h-3 text-cyan" />
+                        Sources
+                      </p>
+                      <ul className="space-y-1">
+                        {m.sources.map((s, si) => (
+                          <li key={`${s.url}-${si}`}>
+                            <a
+                              href={s.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group flex items-start gap-2 text-[12px] text-grey hover:text-cyan transition-colors"
+                            >
+                              <span className="text-faint shrink-0">{si + 1}.</span>
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{s.title}</span>
+                                <span className="block truncate text-[11px] text-faint">
+                                  {s.domain}
+                                </span>
+                              </span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {m.role === "assistant" && m.content && !(streaming && isLast) && (
                     <div className="flex items-center gap-2 mt-2">
                       {m.model && (
@@ -561,6 +640,34 @@ export function Chat() {
             className="hidden"
             onChange={(e) => pickImage(e.target.files?.[0])}
           />
+          <div className="flex items-center gap-2 mb-2">
+            <div className="inline-flex items-center rounded-xl glass p-0.5">
+              {SEARCH_MODES.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => changeMode(m.value)}
+                  title={m.title}
+                  aria-pressed={searchMode === m.value}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-lg transition-colors ${
+                    searchMode === m.value
+                      ? "bg-cyan/20 text-cyan font-medium"
+                      : "text-faint hover:text-grey"
+                  }`}
+                >
+                  {m.value === "auto" && <Icon name="globe" className="w-3.5 h-3.5" />}
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] text-faint">
+              {searchMode === "auto"
+                ? "Web search: auto"
+                : searchMode === "web"
+                  ? "Web search: always on"
+                  : "Web search: off"}
+            </span>
+          </div>
           <div className="glass-strong rounded-2xl p-1.5 flex items-end gap-2 glow-ring">
             <textarea
               value={input}

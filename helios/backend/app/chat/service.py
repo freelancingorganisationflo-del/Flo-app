@@ -488,11 +488,12 @@ async def _run_and_persist(
     *,
     spoken: bool = False,
     mode: str = "auto",
-) -> tuple[str, list[dict], str | None]:
+) -> tuple[str, list[dict], str | None, list[dict]]:
     history = await recent_history(db, user.id)
     system = _system_prompt() + (SPOKEN_RULES if spoken else "")
     registry = build_registry(db, user.id, llm)
     seeded_events: list[dict] = []
+    sources: list[dict] = []
     if decide_web_search(user_message, mode, has_context=bool(history)):
         research = await gather_evidence(
             user_message,
@@ -502,6 +503,7 @@ async def _run_and_persist(
             fetch_fn=fetch_page,
         )
         seeded_events = research["tool_events"]
+        sources = research["sources"]
         if research["evidence"]:
             system += (
                 "\n\n"
@@ -525,7 +527,7 @@ async def _run_and_persist(
     # On tool-loop exhaustion the assistant text is a fallback, not a real
     # reply, so persist nothing rather than orphan the user message.
     if final == OUT_OF_STEPS_MESSAGE:
-        return final, tool_events, used_model
+        return final, tool_events, used_model, sources
     db.add_all(
         [
             Message(user_id=user.id, role="user", content=user_message),
@@ -533,7 +535,7 @@ async def _run_and_persist(
         ]
     )
     await db.commit()
-    return final, tool_events, used_model
+    return final, tool_events, used_model, sources
 
 
 async def run_chat(
@@ -546,6 +548,22 @@ async def run_chat(
     spoken: bool = False,
     mode: str = "auto",
 ) -> tuple[str, list[dict], str | None]:
+    final, tool_events, used_model, _sources = await _run_and_persist(
+        db, user, user_message, llm, model=model, spoken=spoken, mode=mode
+    )
+    return final, tool_events, used_model
+
+
+async def run_chat_with_sources(
+    db: AsyncSession,
+    user: User,
+    user_message: str,
+    llm: LLMClient,
+    model: str | None = None,
+    *,
+    spoken: bool = False,
+    mode: str = "auto",
+) -> tuple[str, list[dict], str | None, list[dict]]:
     return await _run_and_persist(
         db, user, user_message, llm, model=model, spoken=spoken, mode=mode
     )
@@ -561,12 +579,18 @@ async def stream_chat(
     spoken: bool = False,
     mode: str = "auto",
 ):
-    final, tool_events, used_model = await _run_and_persist(
+    final, tool_events, used_model, sources = await _run_and_persist(
         db, user, user_message, llm, model=model, spoken=spoken, mode=mode
     )
 
+    if sources:
+        yield {"type": "stage", "stage": "searching"}
     for event in tool_events:
         yield {"type": "tool", "name": event["name"]}
+    if sources:
+        yield {"type": "stage", "stage": "analyzing"}
+        yield {"type": "sources", "sources": sources}
+    yield {"type": "stage", "stage": "generating"}
     for token in _tokenize(final):
         yield {"type": "delta", "text": token}
         await asyncio.sleep(0.01)

@@ -243,3 +243,61 @@ async def test_chat_auto_searches_the_web_for_factual_questions(authed_client, s
     assert fetches == ["https://example.com/france"]
     # Prefetch injects tool results, so the model should answer from them.
     assert "web" in body["reply"].lower()
+    assert body["sources"] and body["sources"][0]["url"] == "https://example.com/france"
+
+
+async def test_chat_mode_off_skips_search(authed_client, search_llm, monkeypatch):
+    client, headers = authed_client
+
+    async def fail_search(query, max_results=None):
+        raise AssertionError("mode=off must not search")
+
+    import app.chat.service as chat_service
+
+    monkeypatch.setattr(chat_service, "search_web", fail_search)
+    resp = await client.post(
+        "/api/chat",
+        json={"message": "Who is the president of France?", "mode": "off"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tool_events"] == []
+
+
+async def test_stream_emits_sources_and_stages(authed_client, search_llm, monkeypatch):
+    client, headers = authed_client
+
+    async def fake_search(query, max_results=None):
+        return [
+            {
+                "title": "France",
+                "url": "https://example.com/france",
+                "snippet": "European country.",
+                "source": "web",
+            }
+        ]
+
+    async def fake_fetch(url, max_chars=None):
+        return {"url": url, "title": "France", "text": "France is in Europe.", "truncated": False}
+
+    import app.chat.service as chat_service
+
+    monkeypatch.setattr(chat_service, "search_web", fake_search)
+    monkeypatch.setattr(chat_service, "fetch_page", fake_fetch)
+    events: list[dict] = []
+    async with client.stream(
+        "POST",
+        "/api/chat/stream",
+        json={"message": "Who is the president of France?", "mode": "web"},
+        headers=headers,
+    ) as resp:
+        assert resp.status_code == 200
+        async for line in resp.aiter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+    types = [e["type"] for e in events]
+    assert "sources" in types
+    assert "stage" in types
+    sources_event = next(e for e in events if e["type"] == "sources")
+    assert sources_event["sources"][0]["url"] == "https://example.com/france"
+

@@ -12,7 +12,7 @@ from ..llm_gateway.client import LLMClient
 from ..llm_gateway.routing import route_model
 from ..models import User
 from ..search.decision import normalize_mode
-from .service import run_chat, stream_chat
+from .service import run_chat_with_sources, stream_chat
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -55,7 +55,7 @@ async def chat(
     if not req.message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
     model = _resolve_model(req.model, req.message.strip())
-    final, tool_events, used_model = await run_chat(
+    final, tool_events, used_model, sources = await run_chat_with_sources(
         db,
         user,
         req.message.strip(),
@@ -64,7 +64,12 @@ async def chat(
         spoken=req.spoken,
         mode=normalize_mode(req.mode),
     )
-    return {"reply": final, "tool_events": tool_events, "model": used_model or settings.user_llm_model}
+    return {
+        "reply": final,
+        "tool_events": tool_events,
+        "sources": sources,
+        "model": used_model or settings.user_llm_model,
+    }
 
 
 @router.post("/stream")

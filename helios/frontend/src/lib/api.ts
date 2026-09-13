@@ -66,11 +66,23 @@ export interface Task {
   updated_at: string;
 }
 
+export interface ChatSource {
+  title: string;
+  url: string;
+  domain: string;
+  snippet: string;
+  source: string;
+  published?: string | null;
+  fetched?: boolean;
+}
+
 export interface ChatEvent {
-  type: "tool" | "delta" | "done";
+  type: "tool" | "delta" | "done" | "stage" | "sources";
   name?: string;
   text?: string;
   model?: string;
+  stage?: string;
+  sources?: ChatSource[];
 }
 
 export interface Document {
@@ -234,6 +246,24 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
+  webSearch: (query: string, mode = "auto", conversationId?: string) =>
+    request<{
+      query: string;
+      searched: boolean;
+      sources: ChatSource[];
+      answer: string;
+      timestamp: string;
+      searchId: string;
+      mode: string;
+    }>("/web-search", {
+      method: "POST",
+      body: JSON.stringify({
+        query,
+        mode,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+      }),
+    }),
+
   listModels: () => request<ModelsInfo>("/chat/models"),
 
   getVoiceConfig: () => request<VoiceConfig>("/voice/config"),
@@ -315,7 +345,8 @@ export const api = {
     message: string,
     onEvent: (evt: ChatEvent) => void,
     signal?: AbortSignal,
-    model?: string
+    model?: string,
+    mode?: string
   ): Promise<void> => {
     const token = getToken();
     const res = await fetch("/api/chat/stream", {
@@ -324,7 +355,11 @@ export const api = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(model ? { message, model } : { message }),
+      body: JSON.stringify({
+        message,
+        ...(model ? { model } : {}),
+        mode: mode ?? "auto",
+      }),
       signal,
     });
     if (!res.ok || !res.body) {
