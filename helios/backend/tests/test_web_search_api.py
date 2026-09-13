@@ -92,7 +92,45 @@ async def test_web_search_mode_off_does_not_search(authed_client, ws_llm, monkey
     assert body["searchId"]
 
 
-async def test_web_search_returns_sources_and_answer(authed_client, ws_llm, monkeypatch):
+async def test_web_search_auto_skips_clock_queries(authed_client, ws_llm, monkeypatch):
+    client, headers = authed_client
+
+    async def fail_search(query, max_results=None):
+        raise AssertionError("clock questions must not trigger a web search")
+
+    import app.search.router as search_router
+
+    monkeypatch.setattr(search_router, "search_web", fail_search)
+    resp = await client.post(
+        "/api/web-search",
+        json={"query": "what is today's date?", "mode": "auto"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["searched"] is False
+
+
+async def test_web_search_auto_honors_explicit_request(authed_client, ws_llm, monkeypatch):
+    client, headers = authed_client
+    seen: list[str] = []
+
+    async def fake_search(query, max_results=None):
+        seen.append(query)
+        return _search_results()
+
+    import app.search.router as search_router
+
+    monkeypatch.setattr(search_router, "search_web", fake_search)
+    monkeypatch.setattr(search_router, "fetch_page", _fake_fetch)
+    resp = await client.post(
+        "/api/web-search",
+        json={"query": "please search the web for the latest ai news", "mode": "auto"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["searched"] is True
+    assert seen and seen[0]
+
     client, headers = authed_client
 
     async def fake_search(query, max_results=None):

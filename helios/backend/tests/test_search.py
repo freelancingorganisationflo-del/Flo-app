@@ -142,6 +142,20 @@ async def test_fetch_page_extracts_text(monkeypatch):
     assert page["truncated"] is False
 
 
+def test_fetch_page_truncates_long_text():
+    from app.search.providers.base import extract_page
+
+    long_html = (
+        "<html><head><title>Long</title></head><body><p>"
+        + ("word " * 2000)
+        + "</p></body></html>"
+    )
+    page = extract_page(FakeResponse("https://example.com/long", text=long_html), max_chars=200)
+    assert page["truncated"] is True
+    assert len(page["text"]) <= 201
+    assert page["text"].endswith("…")
+
+
 async def test_fetch_page_blocks_private_urls():
     with pytest.raises(SearchError):
         await fetch_page("http://127.0.0.1/secret")

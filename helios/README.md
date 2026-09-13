@@ -69,9 +69,39 @@ base and answer with source attribution.
 
 - `GET  /api/search?q=...` — live web search (DuckDuckGo, no API key)
 - `POST /api/search/fetch` — fetch a public page and extract readable text
+- `POST /api/web-search` — full research pipeline: `{query, mode}` returns
+  `{searched, sources[], answer, searchId, mode, timestamp}`
 
 Chat tools `web_search` and `fetch_url` let the assistant look up current
 information and cite sources. Private/local URLs are blocked.
+
+#### Search modes
+
+The chat UI (and `/api/web-search`) expose three modes, persisted per browser
+as `helios_search_mode`:
+
+- `auto` — HELIOS decides; factual/current questions search, while greetings,
+  personal task/memory commands, and clock questions (`current_datetime` tool)
+  skip the web.
+- `web` — always run a live search.
+- `off` — never search.
+
+#### Research pipeline
+
+`app/search/` is modular so the backend can be swapped or disabled:
+
+- `providers/` — swappable `SearchProvider` backends (DuckDuckGo by default,
+  selected with `SEARCH_PROVIDER`).
+- `decision.py` — per-request mode + message heuristics.
+- `pipeline.py` — `plan_queries` (1..N, Hinglish→English rewrite, dedup,
+  spam drop), `rank_sources` (relevance/quality/freshness), untrusted-content
+  sanitising, and `answer_from_evidence` grounded on live sources only.
+- `cache.py` — short TTL cache for searches/pages.
+- `security.py` — SSRF guard; `errors.py` — typed errors.
+
+Streaming emits `stage`, `sources`, `tool`, `delta`, and `done` SSE events so
+the UI can show a live progress indicator and a clickable Sources panel.
+
 
 ## Tests
 
@@ -91,6 +121,12 @@ Only `USER_LLM_*` variables are used for the LLM. Supply your own key in `.env`.
   `postgresql+asyncpg://user:pass@host:5432/helios` (production)
 - `USER_LLM_API_KEY`, `USER_LLM_BASE_URL`, `USER_LLM_MODEL`,
   `USER_LLM_EMBEDDING_MODEL`
+- `SEARCH_PROVIDER` — web-search backend, default `duckduckgo`
+- `SEARCH_API_KEY` — optional key for keyed providers
+- `WEB_SEARCH_MAX_RESULTS` (8), `WEB_SEARCH_MAX_QUERIES` (3),
+  `WEB_SEARCH_RESULTS_PER_QUERY` (5), `WEB_FETCH_MAX_PAGES` (2),
+  `WEB_FETCH_MAX_CHARS` (8000), `WEB_SEARCH_TIMEOUT_SECONDS` (20),
+  `WEB_SEARCH_CACHE_TTL_SECONDS` (300)
 - `USER_VISION_MODEL` — default model used for image analysis
   (e.g. `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`, a free
   vision-capable model). Paid vision models like `google/gemini-2.5-flash`
