@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.chat.service import stream_chat
 from app.deps import get_llm
-from app.llm_gateway.client import ChatResult, LLMClient, ToolCall
+from app.llm_gateway.client import ChatResult, LLMClient, ToolCall, single_shot_events
 from app.main import app
 from app.models import Memory, Message, User
 
@@ -52,6 +52,11 @@ class FakeLLM(LLMClient):
             tool_calls=[],
             assistant_message={"role": "assistant", "content": f"Echo: {last['content']}"},
         )
+
+    async def stream_complete(self, messages, tools=None, model=None, max_tokens=None):
+        result = await self.complete(messages, tools=tools, model=model)
+        for event in single_shot_events(result):
+            yield event
 
     async def embed(self, text):
         if self.fail_embed:

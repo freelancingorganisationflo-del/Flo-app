@@ -123,6 +123,10 @@ Only `USER_LLM_*` variables are used for the LLM. Supply your own key in `.env`.
   `USER_LLM_EMBEDDING_MODEL`
 - `SEARCH_PROVIDER` — web-search backend, default `duckduckgo`
 - `SEARCH_API_KEY` — optional key for keyed providers
+- `LLM_MAX_ATTEMPTS` (3), `LLM_RETRY_BACKOFF_SECONDS` (0.6) — retry transient
+  provider errors (429/5xx/empty body) before giving up
+- `LLM_AUTO_ROUTE_FREE_ONLY` (true) — keep auto model routing on `:free`
+  models so a free-tier key never fails mid-chat with an out-of-credits error
 - `WEB_SEARCH_MAX_RESULTS` (8), `WEB_SEARCH_MAX_QUERIES` (3),
   `WEB_SEARCH_RESULTS_PER_QUERY` (5), `WEB_FETCH_MAX_PAGES` (2),
   `WEB_FETCH_MAX_CHARS` (8000), `WEB_SEARCH_TIMEOUT_SECONDS` (20),

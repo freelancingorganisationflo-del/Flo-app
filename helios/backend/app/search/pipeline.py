@@ -59,6 +59,37 @@ _REPUTABLE = {
 _AUTHORITY_SUFFIX = (".gov", ".gov.uk", ".gov.in", ".edu", ".ac.uk", ".ac.in", ".edu.au")
 _OFFICIAL_PREFIX = ("docs.", "developer.", "developers.", "support.")
 
+# A short, plain-English factual lookup does not need an extra LLM round trip
+# to become a search query, so we skip the rewrite and save latency.
+_HINGLISH = {
+    "ke", "ka", "ki", "ko", "hai", "hain", "kya", "kaun", "kab", "kahan",
+    "kitna", "kitne", "mein", "se", "aur", "nahi", "karo", "batao", "chahiye",
+    "aaj", "kal", "kaisa", "kaise", "hoga", "hogi", "tha", "thi",
+}
+_FOLLOWUP_WORDS = {
+    "it", "this", "that", "and", "what", "about", "uska", "uski", "uske",
+    "iska", "iski", "iske", "ye", "yeh", "wahi",
+}
+_RESEARCH_WORDS = {
+    "compare", "comparison", "vs", "versus", "best", "top", "difference",
+    "review", "pros", "cons", "alternatives", "research", "list",
+}
+
+
+def _is_simple_lookup(message: str, history: list[dict] | None) -> bool:
+    text = (message or "").strip()
+    if not text or history:
+        return False
+    if any(ord(ch) > 127 for ch in text):
+        return False
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    if not 4 <= len(words) <= 12:
+        return False
+    lowered = set(words)
+    if lowered & _HINGLISH or lowered & _FOLLOWUP_WORDS or lowered & _RESEARCH_WORDS:
+        return False
+    return True
+
 
 def domain_of(url: str) -> str:
     try:
@@ -267,7 +298,10 @@ async def gather_evidence(
         "evidence": "",
         "tool_events": [],
     }
-    queries = await plan_queries(query, llm, history)
+    if _is_simple_lookup(query, history):
+        queries = [query.strip()]
+    else:
+        queries = await plan_queries(query, llm, history)
     total_limit = max_results or settings.web_search_max_results
     per_query = settings.web_search_results_per_query
     started = time.monotonic()
@@ -283,6 +317,20 @@ async def gather_evidence(
             hit_queries.append(search_query)
             result["tool_events"].append(
                 {"name": "web_search", "arguments": json.dumps({"query": search_query})}
+            )
+            raw_results.extend(items)
+    # A rewritten query can occasionally return nothing when the raw user
+    # message would have worked, so fall back to the original text once.
+    original = query.strip()
+    if not raw_results and original and original not in queries:
+        try:
+            items = await search_fn(original, max_results=per_query)
+        except SearchError:
+            items = []
+        if items:
+            hit_queries.append(original)
+            result["tool_events"].append(
+                {"name": "web_search", "arguments": json.dumps({"query": original})}
             )
             raw_results.extend(items)
     if not raw_results:

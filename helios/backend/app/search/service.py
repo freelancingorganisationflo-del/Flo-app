@@ -37,7 +37,10 @@ async def search_web(query: str, max_results: int | None = None) -> list[dict]:
     except Exception:
         logger.warning("search failed provider=%s query=%r", provider.name, query)
         raise
-    cache_set(cache_key, results, settings.web_search_cache_ttl_seconds)
+    # Never cache an empty result set: a single provider hiccup would
+    # otherwise poison every retry for the whole TTL window.
+    if results:
+        cache_set(cache_key, results, settings.web_search_cache_ttl_seconds)
     logger.info(
         "search provider=%s query=%r results=%d duration=%.2fs",
         provider.name,

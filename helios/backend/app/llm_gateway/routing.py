@@ -121,5 +121,7 @@ def route_model(message: str) -> str | None:
         return None
     candidate = MODEL_BY_CATEGORY.get(category)
     if candidate and candidate in settings.user_llm_available_models:
+        if settings.llm_auto_route_free_only and not candidate.endswith(":free"):
+            return None
         return candidate
     return None

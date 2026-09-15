@@ -3,7 +3,7 @@ import json
 import pytest_asyncio
 
 from app.deps import get_llm
-from app.llm_gateway.client import ChatResult, LLMClient, ToolCall
+from app.llm_gateway.client import ChatResult, LLMClient, ToolCall, single_shot_events
 from app.main import app
 
 
@@ -72,6 +72,11 @@ class SearchLLM(LLMClient):
             tool_calls=[],
             assistant_message={"role": "assistant", "content": f"Echo: {last['content']}"},
         )
+
+    async def stream_complete(self, messages, tools=None, model=None, max_tokens=None):
+        result = await self.complete(messages, tools=tools, model=model, max_tokens=max_tokens)
+        for event in single_shot_events(result):
+            yield event
 
     async def embed(self, text):
         return [1.0, 0.0]

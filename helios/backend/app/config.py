@@ -22,8 +22,11 @@ class Settings(BaseSettings):
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     ]
     llm_auto_route: bool = True
+    llm_auto_route_free_only: bool = True
     llm_timeout_seconds: float = 60.0
     llm_max_tool_iterations: int = 5
+    llm_max_attempts: int = 3
+    llm_retry_backoff_seconds: float = 0.6
 
     user_stt_model: str = "openai/whisper-1"
     user_tts_model: str = "deepgram/flux-tts:free"

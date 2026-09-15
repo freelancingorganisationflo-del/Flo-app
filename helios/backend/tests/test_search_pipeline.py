@@ -98,6 +98,86 @@ async def test_gather_evidence_dedupes_and_uses_multiple_queries(monkeypatch):
     assert "fetch_url" in names
 
 
+async def test_gather_evidence_skips_rewrite_for_simple_english():
+    calls: list[dict] = []
+
+    class SpyLLM(LLMClient):
+        async def complete(self, messages, tools=None, model=None, max_tokens=None):
+            calls.append({"messages": messages})
+            return ChatResult(content="rewritten", tool_calls=[])
+
+        async def embed(self, text):
+            return [1.0, 0.0]
+
+    async def fake_search(query, max_results=None):
+        return [{"title": "t", "url": "https://example.com/x", "snippet": "s"}]
+
+    async def fake_fetch(url, max_chars=None):
+        return {"url": url, "title": "t", "text": "body", "truncated": False}
+
+    result = await gather_evidence(
+        "Who is the president of France?",
+        SpyLLM(),
+        search_fn=fake_search,
+        fetch_fn=fake_fetch,
+    )
+    assert calls == []
+    assert result["queries"] == ["Who is the president of France?"]
+
+
+async def test_gather_evidence_rewrites_hinglish_queries():
+    class SpyLLM(LLMClient):
+        async def complete(self, messages, tools=None, model=None, max_tokens=None):
+            return ChatResult(content="president of france", tool_calls=[])
+
+        async def embed(self, text):
+            return [1.0, 0.0]
+
+    async def fake_search(query, max_results=None):
+        return [{"title": "t", "url": "https://example.com/x", "snippet": "s"}]
+
+    async def fake_fetch(url, max_chars=None):
+        return {"url": url, "title": "t", "text": "body", "truncated": False}
+
+    result = await gather_evidence(
+        "France ke president kaun hai?",
+        SpyLLM(),
+        search_fn=fake_search,
+        fetch_fn=fake_fetch,
+    )
+    assert result["queries"] == ["president of france"]
+
+
+async def test_gather_evidence_falls_back_to_original_query():
+    class SpyLLM(LLMClient):
+        async def complete(self, messages, tools=None, model=None, max_tokens=None):
+            return ChatResult(content="rewritten query", tool_calls=[])
+
+        async def embed(self, text):
+            return [1.0, 0.0]
+
+    seen: list[str] = []
+
+    async def fake_search(query, max_results=None):
+        seen.append(query)
+        if query == "rewritten query":
+            return []
+        return [{"title": "t", "url": "https://example.com/x", "snippet": "s"}]
+
+    async def fake_fetch(url, max_chars=None):
+        return {"url": url, "title": "t", "text": "body", "truncated": False}
+
+    result = await gather_evidence(
+        "France ke president kaun hai?",
+        SpyLLM(),
+        search_fn=fake_search,
+        fetch_fn=fake_fetch,
+    )
+    assert seen == ["rewritten query", "France ke president kaun hai?"]
+    assert result["searched"] is True
+    assert result["queries"] == ["France ke president kaun hai?"]
+
+
 async def test_gather_evidence_empty_search_marks_not_searched():
     async def empty_search(query, max_results=None):
         return []

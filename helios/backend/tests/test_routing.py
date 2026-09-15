@@ -58,19 +58,34 @@ def test_classify_general_chat():
     assert classify_task("How are you today?") is None
 
 
-def test_route_model_coding():
+def test_route_model_coding(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     assert route_model("Write code to fix the bug") == "anthropic/claude-haiku-4.5"
 
 
-def test_route_model_scripting():
+def test_route_model_scripting(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     assert route_model("Make a script to automate downloads") == "openai/gpt-4o-mini"
+
+
+def test_route_model_free_only_skips_paid_models():
+    # With the default free-only guard a paid route is skipped so a free-tier
+    # account never hits a 402 mid-conversation.
+    assert route_model("Write code to fix the bug") is None
 
 
 def test_route_model_general_uses_default():
     assert route_model("hi") is None
 
 
-async def test_chat_auto_routes_coding_task(authed_client, fake_llm):
+async def test_chat_auto_routes_coding_task(authed_client, fake_llm, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     client, headers = authed_client
     resp = await client.post(
         "/api/chat", json={"message": "Fix the bug in my code"}, headers=headers
@@ -79,7 +94,10 @@ async def test_chat_auto_routes_coding_task(authed_client, fake_llm):
     assert fake_llm.last_model == "anthropic/claude-haiku-4.5"
 
 
-async def test_chat_auto_routes_default_string(authed_client, fake_llm):
+async def test_chat_auto_routes_default_string(authed_client, fake_llm, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     client, headers = authed_client
     resp = await client.post(
         "/api/chat",
@@ -88,6 +106,15 @@ async def test_chat_auto_routes_default_string(authed_client, fake_llm):
     )
     assert resp.status_code == 200
     assert fake_llm.last_model == "openai/gpt-4o-mini"
+
+
+async def test_chat_free_tier_avoids_paid_route(authed_client, fake_llm):
+    client, headers = authed_client
+    resp = await client.post(
+        "/api/chat", json={"message": "Fix the bug in my code"}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert fake_llm.last_model is None
 
 
 async def test_chat_falls_back_to_default_when_routed_model_fails(authed_client, fake_llm):

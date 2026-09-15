@@ -1,4 +1,3 @@
-import asyncio
 import json
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -569,6 +568,85 @@ async def run_chat_with_sources(
     )
 
 
+async def _stream_completion(
+    llm: LLMClient,
+    messages: list[dict],
+    registry: ToolRegistry,
+    used_model: str | None,
+):
+    """Stream one completion, falling back to the default model when a
+    user-selected model is rejected (for example a paid model with no
+    credits). Falls back only before the first token is emitted."""
+    current = used_model
+    while True:
+        produced = False
+        try:
+            async for event in llm.stream_complete(
+                messages,
+                tools=registry.schema(),
+                **({"model": current} if current else {}),
+            ):
+                if event["type"] == "delta":
+                    produced = True
+                yield event
+            yield {"type": "model_used", "model": current}
+            return
+        except LLMProviderError:
+            if produced or current is None:
+                raise
+            current = None
+
+
+async def _stream_tool_loop(
+    db: AsyncSession,
+    user_id: int,
+    messages: list[dict],
+    registry: ToolRegistry,
+    llm: LLMClient,
+    model: str | None = None,
+):
+    """Like _run_tool_loop but yields delta events as the model types."""
+    iterations = settings.llm_max_tool_iterations
+    tool_events: list[dict] = []
+    used_model = model
+    final: str | None = None
+
+    for _ in range(iterations):
+        result = None
+        async for event in _stream_completion(llm, messages, registry, used_model):
+            if event["type"] == "delta":
+                yield event
+            elif event["type"] == "model_used":
+                used_model = event["model"]
+            elif event["type"] == "result":
+                result = event["result"]
+        if result is None:
+            raise LLMProviderError("LLM stream ended without a result")
+        if result.tool_calls:
+            if result.assistant_message:
+                messages.append(result.assistant_message)
+            for call in result.tool_calls:
+                tool_events.append({"name": call.name, "arguments": call.arguments})
+                output = await registry.execute(call.name, call.arguments)
+                messages.append(
+                    {"role": "tool", "tool_call_id": call.id, "content": output}
+                )
+            continue
+        final = result.content or ""
+        if result.assistant_message:
+            messages.append(result.assistant_message)
+        break
+
+    if final is None:
+        final = OUT_OF_STEPS_MESSAGE
+    yield {
+        "type": "final",
+        "final": final,
+        "tool_events": tool_events,
+        "used_model": used_model,
+    }
+
+
 async def stream_chat(
     db: AsyncSession,
     user: User,
@@ -579,25 +657,67 @@ async def stream_chat(
     spoken: bool = False,
     mode: str = "auto",
 ):
-    final, tool_events, used_model, sources = await _run_and_persist(
-        db, user, user_message, llm, model=model, spoken=spoken, mode=mode
-    )
-
-    if sources:
+    history = await recent_history(db, user.id)
+    system = _system_prompt() + (SPOKEN_RULES if spoken else "")
+    registry = build_registry(db, user.id, llm)
+    sources: list[dict] = []
+    seeded_events: list[dict] = []
+    if decide_web_search(user_message, mode, has_context=bool(history)):
+        # Tell the UI a search is starting before the slow network calls.
         yield {"type": "stage", "stage": "searching"}
-    for event in tool_events:
+        research = await gather_evidence(
+            user_message,
+            llm,
+            history=history,
+            search_fn=search_web,
+            fetch_fn=fetch_page,
+        )
+        seeded_events = research["tool_events"]
+        sources = research["sources"]
+        if research["evidence"]:
+            system += (
+                "\n\n"
+                + research["evidence"]
+                + "\n\nAnswer using ONLY the LIVE SOURCES above. If they do not "
+                "contain the answer, say you could not verify it."
+            )
+    messages = [
+        {"role": "system", "content": system},
+        *history,
+        {"role": "user", "content": user_message},
+    ]
+    for event in seeded_events:
         yield {"type": "tool", "name": event["name"]}
     if sources:
         yield {"type": "stage", "stage": "analyzing"}
         yield {"type": "sources", "sources": sources}
     yield {"type": "stage", "stage": "generating"}
-    for token in _tokenize(final):
-        yield {"type": "delta", "text": token}
-        await asyncio.sleep(0.01)
-    yield {"type": "done", "model": used_model or llm.model}
 
+    final: str | None = None
+    tool_events: list[dict] = []
+    used_model = model
+    try:
+        async for event in _stream_tool_loop(
+            db, user.id, messages, registry, llm, model=model
+        ):
+            if event["type"] == "final":
+                final = event["final"]
+                tool_events = event["tool_events"]
+                used_model = event["used_model"]
+            else:
+                yield event
+    except Exception:
+        await db.rollback()
+        raise
 
-def _tokenize(text: str, chunk: int = 3):
-    words = text.split()
-    for i in range(0, len(words), chunk):
-        yield " ".join(words[i : i + chunk]) + " "
+    tool_events = [*seeded_events, *tool_events]
+    if final != OUT_OF_STEPS_MESSAGE:
+        db.add_all(
+            [
+                Message(user_id=user.id, role="user", content=user_message),
+                Message(user_id=user.id, role="assistant", content=final),
+            ]
+        )
+        await db.commit()
+    yield {"type": "done", "model": used_model or llm.model, "sources": sources}
+
