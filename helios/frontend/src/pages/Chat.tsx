@@ -501,7 +501,10 @@ export function Chat() {
                     </div>
                   )}
                   {m.content ? (
-                    <Markdown text={m.content} />
+                    <Markdown
+                      text={m.content}
+                      showSources={!(m.sources && m.sources.length > 0)}
+                    />
                   ) : streaming && isLast ? (
                     <div className="flex items-center gap-1 py-1" aria-label="HELIOS is typing">
                       <span className="w-1.5 h-1.5 rounded-full bg-cyan animate-blink" />

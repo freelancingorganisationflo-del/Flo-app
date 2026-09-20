@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 
 from ..config import settings
+from ..style import build_style_prompt, build_style_reminder
 
 # OpenRouter / OpenAI-compatible chat-completions content format for images.
 IMAGE_MIME = {
@@ -20,12 +21,26 @@ VISION_SYSTEM_PROMPT = (
     "image and what the user asks. When the image contains text, read it "
     "faithfully and do not invent content that is not present. If the image is "
     "unclear, low quality, or you cannot see it, say so honestly. "
-    "Keep the answer concise and natural, and use the language the user wrote in."
+    "Keep the answer concise and natural, and use the language the user wrote in. "
+    "Format for readability when it helps: use bullet lists for observations and "
+    "a Markdown table for extracted text or tabular data (for example fields and "
+    "values). Never output raw HTML."
 )
 
 
 class VisionProviderError(RuntimeError):
     pass
+
+
+def _vision_system_prompt() -> str:
+    style = build_style_prompt()
+    reminder = build_style_reminder()
+    prompt = VISION_SYSTEM_PROMPT
+    if style:
+        prompt += "\n\n" + style
+    if reminder:
+        prompt += "\n\n" + reminder
+    return prompt
 
 
 def _default_model() -> str:
@@ -102,7 +117,7 @@ class VisionClient:
             "model": selected,
             "max_tokens": self.max_tokens,
             "messages": [
-                {"role": "system", "content": VISION_SYSTEM_PROMPT},
+                {"role": "system", "content": _vision_system_prompt()},
                 {
                     "role": "user",
                     "content": [

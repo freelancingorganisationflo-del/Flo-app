@@ -14,6 +14,7 @@ from ..rag.service import search_documents as search_documents_service
 from ..search.decision import decide_web_search
 from ..search.pipeline import gather_evidence
 from ..search.service import SearchError, fetch_page, search_web
+from ..style import build_style_prompt, build_style_reminder
 from ..tasks.service import (
     complete_task as complete_task_service,
     create_task as create_task_service,
@@ -56,12 +57,37 @@ def should_web_search(message: str) -> bool:
     return decide_web_search(message, "auto")
 
 
-def _system_prompt() -> str:
+def _clock_lines() -> str:
+    """Real current time in UTC plus the configured local timezone.
+
+    The server clock is authoritative. Including the user's local zone avoids
+    the UTC date being reported as 'yesterday'/'tomorrow' near midnight.
+    """
     now = datetime.now(timezone.utc)
-    clock = now.strftime("%A, %d %B %Y, %H:%M UTC")
+    zone_name = (settings.default_timezone or "UTC").strip() or "UTC"
+    try:
+        local = now.astimezone(ZoneInfo(zone_name))
+        local_label = zone_name
+    except Exception:
+        local = now
+        local_label = "UTC"
     return (
-        "You are Helios, a personal AI assistant. Be warm, concise, and accurate.\n"
-        f"Current date and time: {clock}.\n\n"
+        f"Current real date and time: {now.strftime('%A, %d %B %Y, %I:%M %p')} UTC "
+        f"({local.strftime('%A, %d %B %Y, %I:%M %p')} {local_label}).\n"
+        "For ANY date or time question, use exactly this — never guess and never "
+        "use an earlier or training date."
+    )
+
+
+def _system_prompt() -> str:
+    style = build_style_prompt()
+    parts = [
+        "You are Helios, a personal AI assistant. Be warm, concise, and accurate.",
+        _clock_lines(),
+    ]
+    if style:
+        parts.append(style)
+    parts.append(
         "ANSWER RULES (follow strictly):\n"
         "1. For any factual claim about the world (people, dates, events, prices, "
         "news, statistics), use ONLY the live evidence provided in a 'LIVE SOURCES' "
@@ -78,14 +104,40 @@ def _system_prompt() -> str:
         "Tools:\n"
         "- web_search: focused query for current events, news, or facts.\n"
         "- fetch_url: after web_search, read the 1-2 most relevant pages.\n"
-        "- current_datetime: the real current date/time. Use for 'what time/date is "
-        "it' or a specific timezone; never guess the time.\n"
+        "- current_datetime: the real current date/time. Call it for any date/time "
+        "question (pass the user's timezone if known, otherwise it uses the "
+        "configured local timezone). Never guess the time.\n"
         "- search_memory / save_memory: personal facts about the user.\n"
         "- search_documents: the user's private knowledge base only.\n"
         "- create_task / list_tasks / complete_task / update_task / delete_task: "
         "tasks and reminders. Confirm details before creating a task.\n\n"
+        "RESPONSE FORMAT (pick what best communicates the answer; never force "
+        "formatting when plain text is clearer):\n"
+        "- Comparison (vs, versus, difference, compare, 'A or B'): a Markdown table "
+        "with one row per feature.\n"
+        "- Step-by-step (how to, install, setup, configure, fix, create, build): a "
+        "numbered list, with code blocks where needed.\n"
+        "- Collections (features, benefits, requirements, examples, reasons): a "
+        "bullet list.\n"
+        "- Checklists / to-dos: a checkbox list using '- [ ]' items.\n"
+        "- Code: fenced code block with the language tag.\n"
+        "- Long explanations: short '##' headings + paragraphs, not one wall of text.\n"
+        "- Pros/cons: a two-column table (Advantages | Disadvantages).\n"
+        "- Quote or key callout: '>' blockquote. Use callouts sparingly.\n"
+        "- Numeric trends/comparisons: a '```chart' fenced block containing JSON "
+        '{"type":"bar|line|pie|scatter","title":...,"labels":[...],'
+        '"datasets":[{"label":...,"values":[...]}]}. Only chart real numbers the '
+        "user gave or that appear in sources; NEVER invent data, and prefer a table "
+        "when a chart adds nothing.\n"
+        "- Keep it concise; avoid emoji spam, repetitive conclusions and decorative "
+        "headings.\n"
+        "- Never output raw HTML or scripts.\n\n"
         "When you use a tool, keep the final answer short and natural."
     )
+    reminder = build_style_reminder()
+    if reminder:
+        parts.append(reminder)
+    return "\n\n".join(parts)
 
 
 SYSTEM_PROMPT = _system_prompt()
@@ -132,10 +184,11 @@ def build_registry(db: AsyncSession, user_id: int, llm: LLMClient) -> ToolRegist
     async def current_datetime_handler(timezone_name: str | None = None) -> str:
         tz = timezone.utc
         label = "UTC"
-        if timezone_name:
+        requested = timezone_name or settings.default_timezone
+        if requested:
             try:
-                tz = ZoneInfo(timezone_name)
-                label = timezone_name
+                tz = ZoneInfo(requested)
+                label = requested
             except Exception:
                 tz = timezone.utc
                 label = "UTC"

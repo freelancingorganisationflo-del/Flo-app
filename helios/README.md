@@ -103,6 +103,36 @@ Streaming emits `stage`, `sources`, `tool`, `delta`, and `done` SSE events so
 the UI can show a live progress indicator and a clickable Sources panel.
 
 
+### Conversation style
+
+`app/style.py` is a presentation-only layer that makes HELIOS sound like a
+modern, friendly assistant instead of a formal or textbook one. It is composed
+into every answer path — chat (`chat/service.py`), web research
+(`search/pipeline.py`) and vision (`vision/client.py`) — through
+`build_style_prompt()`.
+
+- **Hinglish-aware**: replies in the user's own language/register. Hinglish or
+  Roman-Hindi input gets natural Hinglish, Devanagari Hindi gets Hindi, English
+  gets English; an explicit request ("in Hindi", "formal mode") is followed for
+  the rest of the conversation.
+- **Modern vocabulary**: prefers simple modern words and avoids
+  `therefore`/`hence`/`utilize`/`facilitate`/`shall`. Technical terms stay in
+  English.
+- **Dost default**: always talks like the user's friendly tech friend — casual,
+  warm, Hinglish when the user writes Hinglish/Hindi, with everyday friend words
+  (yaar, bhai, dekh, chal, bas, ho jayega). The user never has to ask it to be
+  casual.
+- **Context-aware**: mirrors the user's language, varies its openings, uses
+  emojis sparingly, and switches to a formal/academic register **only when
+  explicitly asked** (email, resume, assignment, exam answer) before returning to
+  the friendly default. It stays calm with frustrated users and never claims to
+  be human.
+- **Safety/accuracy first**: style never overrides the grounding, citation or
+  safety rules, which always rank above it.
+
+Presets: `modern_hinglish` (default), `professional`, `neutral`.
+
+
 ## Tests
 
 ```bash
@@ -131,6 +161,11 @@ Only `USER_LLM_*` variables are used for the LLM. Supply your own key in `.env`.
   `WEB_SEARCH_RESULTS_PER_QUERY` (5), `WEB_FETCH_MAX_PAGES` (2),
   `WEB_FETCH_MAX_CHARS` (8000), `WEB_SEARCH_TIMEOUT_SECONDS` (20),
   `WEB_SEARCH_CACHE_TTL_SECONDS` (300)
+- `CHAT_STYLE` — conversation-style preset: `modern_hinglish` (default),
+  `professional` or `neutral`
+- `CHAT_STYLE_ENABLED` (true) — set `false` for the bare factual assistant tone
+- `DEFAULT_TIMEZONE` (`Asia/Kolkata`) — local timezone used for the real-time
+  clock in the system prompt and the `current_datetime` tool
 - `USER_VISION_MODEL` — default model used for image analysis
   (e.g. `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`, a free
   vision-capable model). Paid vision models like `google/gemini-2.5-flash`

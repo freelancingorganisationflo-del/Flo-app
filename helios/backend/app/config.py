@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     llm_max_attempts: int = 3
     llm_retry_backoff_seconds: float = 0.6
 
+    # Conversation style layer: modern, natural, Hinglish-aware tone. Set
+    # chat_style_enabled=False to fall back to the bare factual assistant.
+    # Presets: modern_hinglish (default) | professional | neutral.
+    chat_style: str = "modern_hinglish"
+    chat_style_enabled: bool = True
+
+    # Timezone used for the assistant's real-time clock (system prompt and the
+    # current_datetime tool). Keeps date/time answers aligned with the user's
+    # local day instead of UTC (e.g. IST is already tomorrow after 18:30 UTC).
+    default_timezone: str = "Asia/Kolkata"
+
     user_stt_model: str = "openai/whisper-1"
     user_tts_model: str = "deepgram/flux-tts:free"
     user_tts_voice: str = "en-IN-PrabhatNeural"
