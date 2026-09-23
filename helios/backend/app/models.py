@@ -79,3 +79,42 @@ class DocumentChunk(Base):
     content: Mapped[str] = mapped_column(Text)
     embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(default=0)
+
+
+class CodeSession(Base):
+    __tablename__ = "code_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    title: Mapped[str] = mapped_column(String(255), default="New session")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class CodeMessage(Base):
+    __tablename__ = "code_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CodeFile(Base):
+    __tablename__ = "code_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    language: Mapped[str] = mapped_column(String(40), default="text")
+    content: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

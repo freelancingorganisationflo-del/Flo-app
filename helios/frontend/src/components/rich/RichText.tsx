@@ -1,11 +1,44 @@
 import { useMemo, useState } from "react";
 import { parseRich, type CalloutVariant, type RichBlock } from "@/lib/rich/parse";
+import {
+  buildPreviewDocument,
+  tokenize,
+  type TokenType,
+} from "@/lib/code/highlight";
 import { Icon } from "@/components/Icon";
 import { Inline } from "@/components/rich/Inline";
 import { Chart } from "@/components/rich/Chart";
 
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+const TOKEN_CLASS: Record<TokenType, string> = {
+  plain: "",
+  comment: "text-faint italic",
+  string: "text-mint",
+  number: "text-amber",
+  keyword: "text-violet",
+  function: "text-cyan",
+  tag: "text-blue",
+  attr: "text-cyan",
+  punct: "text-grey",
+};
+
+function CodeBlock({
+  lang,
+  code,
+  allowPreview = false,
+  onSave,
+}: {
+  lang: string;
+  code: string;
+  allowPreview?: boolean;
+  onSave?: (lang: string, code: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
+  const previewDoc = useMemo(
+    () => (allowPreview ? buildPreviewDocument(lang, code) : null),
+    [allowPreview, lang, code]
+  );
 
   async function copy() {
     try {
@@ -23,18 +56,55 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
         <span className="text-[11px] font-semibold uppercase tracking-widest text-faint">
           {lang || "code"}
         </span>
-        <button
-          onClick={copy}
-          aria-label="Copy code"
-          className="flex items-center gap-1.5 text-[11px] text-grey hover:text-cyan transition-colors"
-        >
-          <Icon name={copied ? "check" : "copy"} className="w-3.5 h-3.5" />
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <div className="flex items-center gap-3">
+          {onSave && (
+            <button
+              onClick={() => onSave(lang, code)}
+              aria-label="Save code to workspace"
+              className="flex items-center gap-1.5 text-[11px] text-grey hover:text-cyan transition-colors"
+            >
+              <Icon name="folder" className="w-3.5 h-3.5" />
+              Save
+            </button>
+          )}
+          {previewDoc && (
+            <button
+              onClick={() => setShowPreview((p) => !p)}
+              aria-label="Toggle code preview"
+              className="flex items-center gap-1.5 text-[11px] text-grey hover:text-cyan transition-colors"
+            >
+              <Icon name={showPreview ? "x" : "eye"} className="w-3.5 h-3.5" />
+              {showPreview ? "Close" : "Preview"}
+            </button>
+          )}
+          <button
+            onClick={copy}
+            aria-label="Copy code"
+            className="flex items-center gap-1.5 text-[11px] text-grey hover:text-cyan transition-colors"
+          >
+            <Icon name={copied ? "check" : "copy"} className="w-3.5 h-3.5" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
       </div>
-      <pre className="p-3 overflow-x-auto text-[13px] leading-relaxed font-code text-cyan/90">
-        <code>{code}</code>
+      <pre className="p-3 overflow-x-auto text-[13px] leading-relaxed font-code text-ink/90">
+        <code>
+          {tokens.map((token, index) => (
+            <span key={index} className={TOKEN_CLASS[token.type]}>
+              {token.text}
+            </span>
+          ))}
+        </code>
       </pre>
+      {previewDoc && showPreview && (
+        <iframe
+          title="Code preview"
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          srcDoc={previewDoc}
+          className="w-full h-64 bg-white border-t border-line"
+        />
+      )}
     </div>
   );
 }
@@ -62,7 +132,15 @@ const ALIGN_CLASS: Record<string, string> = {
   right: "text-right",
 };
 
-function BlockView({ block }: { block: RichBlock }) {
+function BlockView({
+  block,
+  allowPreview,
+  onSaveCode,
+}: {
+  block: RichBlock;
+  allowPreview: boolean;
+  onSaveCode?: (lang: string, code: string) => void;
+}) {
   switch (block.type) {
     case "heading":
       return (
@@ -177,7 +255,14 @@ function BlockView({ block }: { block: RichBlock }) {
           </div>
         );
       }
-      return <CodeBlock lang={block.lang} code={block.code} />;
+      return (
+        <CodeBlock
+          lang={block.lang}
+          code={block.code}
+          allowPreview={allowPreview}
+          onSave={onSaveCode}
+        />
+      );
     case "quote":
       return (
         <blockquote className="border-l-2 border-violet/60 pl-3 text-grey italic">
@@ -263,9 +348,13 @@ function BlockView({ block }: { block: RichBlock }) {
 export function RichText({
   text,
   showSources = true,
+  previewCode = false,
+  onSaveCode,
 }: {
   text: string;
   showSources?: boolean;
+  previewCode?: boolean;
+  onSaveCode?: (lang: string, code: string) => void;
 }) {
   const blocks = useMemo(() => parseRich(text), [text]);
   const visible = useMemo(
@@ -276,7 +365,7 @@ export function RichText({
   return (
     <div className="space-y-2.5 text-sm leading-relaxed text-ink/90 break-words">
       {visible.map((block, index) => (
-        <BlockView key={index} block={block} />
+        <BlockView key={index} block={block} allowPreview={previewCode} onSaveCode={onSaveCode} />
       ))}
     </div>
   );

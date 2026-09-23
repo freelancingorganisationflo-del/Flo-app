@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { to: "/voice", label: "Voice", icon: "mic", section: "Main" },
   { to: "/vision", label: "Vision", icon: "eye", section: "Main" },
   { to: "/chat", label: "Chat", icon: "chat", section: "Main" },
+  { to: "/code", label: "Code", icon: "tools", section: "Main" },
   { to: "/memory", label: "Memory", icon: "brain", section: "Main" },
   { to: "/tasks", label: "Tasks", icon: "tasks", section: "Main" },
   { to: "/search", label: "Web Search", icon: "globe", section: "Workspace" },

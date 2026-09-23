@@ -60,8 +60,6 @@ class Settings(BaseSettings):
     vision_max_image_bytes: int = 15 * 1024 * 1024
     vision_models_allowlist: list[str] = [
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-        "google/gemma-4-26b-a4b-it:free",
-        "google/gemma-4-31b-it:free",
         "google/gemini-2.5-flash",
         "openai/gpt-4o-mini",
         "openai/gpt-4o",

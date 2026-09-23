@@ -7,6 +7,7 @@ import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { Dashboard } from "@/pages/Dashboard";
 import { Chat } from "@/pages/Chat";
+import { Code } from "@/pages/Code";
 import { Tasks } from "@/pages/Tasks";
 import { Memory } from "@/pages/Memory";
 import { Documents } from "@/pages/Documents";
@@ -48,6 +49,7 @@ export function App() {
           <Route path="/voice" element={<Voice />} />
           <Route path="/vision" element={<Vision />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/code" element={<Code />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/documents" element={<Documents />} />

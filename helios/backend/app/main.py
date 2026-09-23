@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from .auth.router import router as auth_router
 from .chat.router import router as chat_router
+from .coding.router import router as coding_router
 from .db import Base, engine
 from .memory.router import router as memory_router
 from .rag.router import router as rag_router
@@ -30,6 +31,7 @@ app = FastAPI(title="Helios", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(memory_router)
 app.include_router(chat_router)
+app.include_router(coding_router)
 app.include_router(tasks_router)
 app.include_router(rag_router)
 app.include_router(voice_router)

@@ -2,7 +2,7 @@
 
 Backend (Plans 1-4): FastAPI + SQLAlchemy async + JWT auth + LLM Gateway +
 Chat + Memory + Tasks & Reminders + Knowledge Base (RAG) + Web Search.
-Frontend (PWA, Plan 3) is a React/Vite PWA with chat, tasks, memory,
+Frontend (PWA, Plan 3) is a React/Vite PWA with chat, code, tasks, memory,
 documents, web search, voice, and vision UIs.
 
 ## Run locally
@@ -64,6 +64,30 @@ base and answer with source attribution.
 - `GET  /api/vision/models` — configured vision models
 - `POST /api/vision/analyze` — multipart `file` (+ optional `question`/`model`)
   and gets a multimodal model to describe, OCR, or answer about the image
+
+### Coding workspace (Helios Code)
+
+- `POST /api/coding/stream` — stateless SSE coding assistant. Body:
+  `{"messages": [{"role": "user"|"assistant", "content": "..."}], "model": "..."}`
+  (the caller sends the whole thread each turn). Emits `stage` → `delta`* →
+  `done` events.
+- Sessions (persisted per user):
+  - `GET  /api/coding/sessions` — list sessions
+  - `POST /api/coding/sessions` — create a session (`{"title": "..."}` optional)
+  - `GET  /api/coding/sessions/{id}` — session with `messages` and `files`
+  - `PATCH /api/coding/sessions/{id}` — rename (`{"title": "..."}`)
+  - `DELETE /api/coding/sessions/{id}` — delete the session
+  - `POST /api/coding/sessions/{id}/stream` — SSE turn. Body:
+    `{"message": "...", "model": "...", "mode": "auto"|"web"|"off"}`. Persists the
+    user and assistant turns; emits `stage`/`tool`/`sources` → `delta`* → `done`.
+- Workspace files (shared with the AI as context):
+  - `POST   /api/coding/sessions/{id}/files` — add `{name, language, content}`
+  - `PATCH  /api/coding/sessions/{id}/files/{file_id}` — update name/language/content
+  - `DELETE /api/coding/sessions/{id}/files/{file_id}` — delete a file
+- The `/code` page renders answers with syntax highlighting, copy buttons, a
+  save-code-block action, and a sandboxed in-browser preview for HTML/CSS/JS
+  blocks. `mode=auto` searches the web only for errors, versions, docs, or
+  explicit search requests. Code is never executed on the server.
 
 ### Web search
 

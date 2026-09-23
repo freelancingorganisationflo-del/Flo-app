@@ -35,6 +35,35 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+async function consumeSse<T extends { type: string }>(
+  res: Response,
+  onEvent: (evt: T) => void
+): Promise<boolean> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawDone = false;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      try {
+        const evt = JSON.parse(line.slice(6)) as T;
+        if (evt.type === "done") sawDone = true;
+        onEvent(evt);
+      } catch {
+        // ignore malformed frames
+      }
+    }
+  }
+  return sawDone;
+}
+
 export interface User {
   id: number;
   email: string;
@@ -83,6 +112,50 @@ export interface ChatEvent {
   model?: string;
   stage?: string;
   sources?: ChatSource[];
+}
+
+export interface CodeMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface CodeEvent {
+  type: "stage" | "delta" | "done" | "sources" | "tool";
+  text?: string;
+  stage?: string;
+  model?: string;
+  content?: string;
+  name?: string;
+  title?: string;
+  sources?: ChatSource[];
+}
+
+export interface CodeSession {
+  id: number;
+  title: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CodeTurn {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  model: string | null;
+  created_at: string | null;
+}
+
+export interface CodeFile {
+  id: number;
+  name: string;
+  language: string;
+  content: string;
+  updated_at: string | null;
+}
+
+export interface CodeSessionDetail extends CodeSession {
+  messages: CodeTurn[];
+  files: CodeFile[];
 }
 
 export interface Document {
@@ -367,30 +440,79 @@ export const api = {
       const detail = data?.detail ?? `Chat request failed (${res.status})`;
       throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let sawDone = false;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        const line = part.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        try {
-          const evt = JSON.parse(line.slice(6)) as ChatEvent;
-          if (evt.type === "done") sawDone = true;
-          onEvent(evt);
-        } catch {
-          // ignore malformed frames
-        }
-      }
-    }
+    const sawDone = await consumeSse<ChatEvent>(res, onEvent);
     if (!sawDone) {
       throw new ApiError(res.status, "Chat stream ended unexpectedly. Is the backend configured with an LLM API key?");
+    }
+  },
+
+  listCodeSessions: () => request<CodeSession[]>("/coding/sessions"),
+
+  createCodeSession: (title?: string) =>
+    request<CodeSession>("/coding/sessions", {
+      method: "POST",
+      body: JSON.stringify(title ? { title } : {}),
+    }),
+
+  getCodeSession: (id: number) => request<CodeSessionDetail>(`/coding/sessions/${id}`),
+
+  renameCodeSession: (id: number, title: string) =>
+    request<CodeSession>(`/coding/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+
+  deleteCodeSession: (id: number) =>
+    request<void>(`/coding/sessions/${id}`, { method: "DELETE" }),
+
+  addCodeFile: (
+    sessionId: number,
+    payload: { name: string; language?: string; content?: string }
+  ) =>
+    request<CodeFile>(`/coding/sessions/${sessionId}/files`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateCodeFile: (
+    sessionId: number,
+    fileId: number,
+    patch: { name?: string; language?: string; content?: string }
+  ) =>
+    request<CodeFile>(`/coding/sessions/${sessionId}/files/${fileId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteCodeFile: (sessionId: number, fileId: number) =>
+    request<void>(`/coding/sessions/${sessionId}/files/${fileId}`, { method: "DELETE" }),
+
+  streamCodeSession: async (
+    sessionId: number,
+    message: string,
+    onEvent: (evt: CodeEvent) => void,
+    signal?: AbortSignal,
+    model?: string,
+    mode?: string
+  ): Promise<void> => {
+    const token = getToken();
+    const res = await fetch(`/api/coding/sessions/${sessionId}/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, ...(model ? { model } : {}), mode: mode ?? "auto" }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => null);
+      const detail = data?.detail ?? `Coding request failed (${res.status})`;
+      throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    const sawDone = await consumeSse<CodeEvent>(res, onEvent);
+    if (!sawDone) {
+      throw new ApiError(res.status, "Coding stream ended unexpectedly.");
     }
   },
 };
