@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     search_min_score: float = 0.35
 
     reminder_poll_seconds: float = 30.0
+    automation_poll_seconds: float = 60.0
+    automation_max_runs_per_automation: int = 50
 
     web_search_max_results: int = 8
     web_search_timeout_seconds: float = 20.0

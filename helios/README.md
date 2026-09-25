@@ -89,6 +89,32 @@ base and answer with source attribution.
   blocks. `mode=auto` searches the web only for errors, versions, docs, or
   explicit search requests. Code is never executed on the server.
 
+### Automations
+
+Background jobs that run on a schedule and post their result into the same
+chat timeline as an assistant message (`app/automation/`). The scheduler is an
+in-process poller (`run_automation_worker`), the same pattern as the task
+reminder worker — no external cron or worker process needed.
+
+- `POST /api/automations` — create. Body:
+  `{"name", "trigger_type": "schedule", "trigger_config", "conditions",
+  "action_type", "action_config", "enabled"}` (201)
+- `GET  /api/automations` — list the user's automations
+- `GET  /api/automations/{id}` — one automation
+- `PATCH /api/automations/{id}` — partial update (toggling `enabled` recomputes
+  or clears `next_run_at`)
+- `DELETE /api/automations/{id}` — delete (204)
+- `POST /api/automations/{id}/run` — run once immediately, returns the run record
+- `GET  /api/automations/{id}/runs` — run history (`success` |
+  `skipped_condition` | `failed`)
+
+`trigger_config` supports `{"frequency": "interval", "minutes": 60}`,
+`{"frequency": "hourly"}`, or `{"frequency": "daily", "time": "08:00"}` (local
+to `DEFAULT_TIMEZONE`). `conditions` is a simple evaluator (`always_true`,
+`deadline_within_hours`, `keyword_match`). V1 actions reuse existing modules:
+`deadline_briefing` and `morning_briefing` read the Tasks store, and
+`news_monitor` reuses the Web Search pipeline + LLM.
+
 ### Web search
 
 - `GET  /api/search?q=...` — live web search (DuckDuckGo, no API key)

@@ -158,6 +158,40 @@ export interface CodeSessionDetail extends CodeSession {
   files: CodeFile[];
 }
 
+export interface Automation {
+  id: number;
+  name: string;
+  trigger_type: string;
+  trigger_config: Record<string, unknown>;
+  conditions: Record<string, unknown> | null;
+  action_type: string;
+  action_config: Record<string, unknown>;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AutomationInput {
+  name: string;
+  trigger_type?: string;
+  trigger_config?: Record<string, unknown>;
+  conditions?: Record<string, unknown> | null;
+  action_type: string;
+  action_config?: Record<string, unknown> | null;
+  enabled?: boolean;
+}
+
+export interface AutomationRun {
+  id: number;
+  automation_id: number;
+  status: "success" | "failed" | "skipped_condition" | string;
+  result_summary: string | null;
+  error: string | null;
+  run_at: string | null;
+}
+
 export interface Document {
   id: number;
   title: string;
@@ -515,4 +549,29 @@ export const api = {
       throw new ApiError(res.status, "Coding stream ended unexpectedly.");
     }
   },
+
+  listAutomations: () => request<Automation[]>("/automations"),
+
+  getAutomation: (id: number) => request<Automation>(`/automations/${id}`),
+
+  createAutomation: (payload: AutomationInput) =>
+    request<Automation>("/automations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateAutomation: (id: number, patch: Partial<AutomationInput>) =>
+    request<Automation>(`/automations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteAutomation: (id: number) =>
+    request<void>(`/automations/${id}`, { method: "DELETE" }),
+
+  runAutomation: (id: number) =>
+    request<AutomationRun>(`/automations/${id}/run`, { method: "POST" }),
+
+  listAutomationRuns: (id: number) =>
+    request<AutomationRun[]>(`/automations/${id}/runs`),
 };

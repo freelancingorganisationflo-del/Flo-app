@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -118,3 +118,35 @@ class CodeFile(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class Automation(Base):
+    __tablename__ = "automations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    trigger_type: Mapped[str] = mapped_column(String(40), default="schedule")
+    trigger_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    conditions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    action_type: Mapped[str] = mapped_column(String(40))
+    action_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    automation_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    status: Mapped[str] = mapped_column(String(30))
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

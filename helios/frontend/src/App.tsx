@@ -8,6 +8,7 @@ import { Signup } from "@/pages/Signup";
 import { Dashboard } from "@/pages/Dashboard";
 import { Chat } from "@/pages/Chat";
 import { Code } from "@/pages/Code";
+import { Automation } from "@/pages/Automation";
 import { Tasks } from "@/pages/Tasks";
 import { Memory } from "@/pages/Memory";
 import { Documents } from "@/pages/Documents";
@@ -56,7 +57,7 @@ export function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/tools" element={<Placeholder />} />
-          <Route path="/automation" element={<Placeholder />} />
+          <Route path="/automation" element={<Automation />} />
           <Route path="/calendar" element={<Placeholder />} />
           <Route path="/files" element={<Placeholder />} />
           <Route path="/analytics" element={<Placeholder />} />
