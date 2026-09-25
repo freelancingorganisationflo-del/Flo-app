@@ -60,8 +60,9 @@ def test_coding_prompt_has_code_rules_and_style():
     assert "Helios Code" in prompt
     assert "fenced blocks" in prompt
     assert "cannot execute code" in prompt
-    # The shared conversation style layer is included.
-    assert "tech dost" in prompt
+    # The shared conversation style layer (professional by default) is included.
+    assert "CONVERSATION STYLE" in prompt
+    assert "slang" in prompt.lower()
 
 
 def test_normalize_messages_filters_and_requires_user_last():

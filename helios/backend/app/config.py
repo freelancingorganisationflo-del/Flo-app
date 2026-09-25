@@ -30,8 +30,8 @@ class Settings(BaseSettings):
 
     # Conversation style layer: modern, natural, Hinglish-aware tone. Set
     # chat_style_enabled=False to fall back to the bare factual assistant.
-    # Presets: modern_hinglish (default) | professional | neutral.
-    chat_style: str = "modern_hinglish"
+    # Presets: professional (default) | modern_hinglish | neutral.
+    chat_style: str = "professional"
     chat_style_enabled: bool = True
 
     # Timezone used for the assistant's real-time clock (system prompt and the

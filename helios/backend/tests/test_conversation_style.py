@@ -9,9 +9,22 @@ from app.style import (
 )
 
 
-def test_default_style_is_modern_hinglish():
-    assert settings.chat_style == DEFAULT_STYLE == "modern_hinglish"
-    assert build_style_prompt() == MODERN_HINGLISH_STYLE
+def test_default_style_is_professional():
+    assert settings.chat_style == DEFAULT_STYLE == "professional"
+    assert build_style_prompt() == PROFESSIONAL_STYLE
+
+
+def test_professional_style_bans_slang_and_formal_words():
+    style = PROFESSIONAL_STYLE.lower()
+    assert "professional" in style
+    assert "mirror" in style
+    assert "hinglish" in style
+    for slang in ("yaar", "bhai", "bro", "kya scene hai", "pakka", "ho jayega"):
+        assert slang in style
+    for banned in ("therefore", "hence", "utilize", "facilitate", "kindly", "shall"):
+        assert banned in style
+    assert "never claim or imply you are a human" in style
+    assert "accuracy and safety always outrank style" in style
 
 
 def test_style_block_covers_required_guidance():
@@ -35,10 +48,10 @@ def test_style_block_covers_required_guidance():
 
 
 def test_style_presets_resolve_and_unknown_falls_back():
-    assert resolve_style("professional") == PROFESSIONAL_STYLE
+    assert resolve_style("modern_hinglish") == MODERN_HINGLISH_STYLE
     assert resolve_style("NEUTRAL") == NEUTRAL_STYLE
     assert resolve_style("modern-hinglish") == MODERN_HINGLISH_STYLE
-    assert resolve_style("does-not-exist") == MODERN_HINGLISH_STYLE
+    assert resolve_style("does-not-exist") == PROFESSIONAL_STYLE
 
 
 def test_style_can_be_disabled(monkeypatch):
@@ -47,8 +60,8 @@ def test_style_can_be_disabled(monkeypatch):
 
 
 def test_style_preset_switch_via_settings(monkeypatch):
-    monkeypatch.setattr(settings, "chat_style", "professional")
-    assert build_style_prompt() == PROFESSIONAL_STYLE
+    monkeypatch.setattr(settings, "chat_style", "modern_hinglish")
+    assert build_style_prompt() == MODERN_HINGLISH_STYLE
 
 
 def test_style_reminder_is_appended_last(monkeypatch):
@@ -57,7 +70,7 @@ def test_style_reminder_is_appended_last(monkeypatch):
     monkeypatch.setattr(settings, "chat_style_enabled", True)
     prompt = _system_prompt()
     assert "STYLE REMINDER" in prompt
-    assert prompt.rstrip().endswith("to be reminded to be friendly.")
+    assert prompt.rstrip().endswith("unless the user explicitly asks otherwise.")
     assert prompt.index("STYLE REMINDER") > prompt.index("RESPONSE FORMAT")
 
 
