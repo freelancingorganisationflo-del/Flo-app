@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .auth.router import router as auth_router
+from .llm_gateway.profiles import public_routes
 from .automation.router import router as automation_router
 from .automation.worker import run_automation_worker
 from .chat.router import router as chat_router
@@ -48,3 +49,8 @@ app.include_router(web_search_router)
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/providers")
+async def providers():
+    return public_routes()

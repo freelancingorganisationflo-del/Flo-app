@@ -6,10 +6,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import settings
 from ..db import get_db
-from ..deps import get_current_user, get_llm
-from ..llm_gateway.client import LLMClient
+from ..deps import get_code_llm, get_current_user
+from ..llm_gateway.client import LLMClient, LLMProviderError
 from ..models import CodeFile, CodeMessage, CodeSession, User
 from ..search.decision import normalize_mode
 from .service import (
@@ -68,10 +67,16 @@ class FilePatch(BaseModel):
     content: str | None = None
 
 
+def _available_models() -> list[str]:
+    from ..llm_gateway.profiles import resolve_route
+
+    return list(resolve_route("code").available_models)
+
+
 def _resolve_model(model: str | None) -> str | None:
     if model is None or model in ("default", "auto"):
         return None
-    available = settings.user_llm_available_models
+    available = _available_models()
     if model not in available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -188,7 +193,7 @@ async def stream_session(
     req: SessionChat,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    llm: LLMClient = Depends(get_llm),
+    llm: LLMClient = Depends(get_code_llm),
 ) -> StreamingResponse:
     message = req.message.strip()
     if not message:
@@ -200,10 +205,13 @@ async def stream_session(
     mode = normalize_mode(req.mode)
 
     async def event_gen():
-        async for event in stream_code_session(
-            db, user.id, session, message, llm, model=model, mode=mode
-        ):
-            yield f"data: {json.dumps(event)}\n\n"
+        try:
+            async for event in stream_code_session(
+                db, user.id, session, message, llm, model=model, mode=mode
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except LLMProviderError as exc:
+            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
@@ -271,7 +279,7 @@ async def remove_file(
 async def code_stream(
     req: CodeRequest,
     user: User = Depends(get_current_user),
-    llm: LLMClient = Depends(get_llm),
+    llm: LLMClient = Depends(get_code_llm),
 ) -> StreamingResponse:
     model = _resolve_model(req.model)
     try:
@@ -282,7 +290,10 @@ async def code_stream(
         ) from exc
 
     async def event_gen():
-        async for event in stream_code(messages, llm, model=model):
-            yield f"data: {json.dumps(event)}\n\n"
+        try:
+            async for event in stream_code(messages, llm, model=model):
+                yield f"data: {json.dumps(event)}\n\n"
+        except LLMProviderError as exc:
+            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/AppLayout";
@@ -17,12 +17,13 @@ import { Settings } from "@/pages/Settings";
 import { Placeholder } from "@/pages/Placeholder";
 import { Voice } from "@/pages/Voice";
 import { Vision } from "@/pages/Vision";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-navy">
+        <div className="flex items-center justify-center h-[100dvh] bg-navy">
         <Spinner />
       </div>
     );
@@ -32,7 +33,8 @@ function RootRedirect() {
 
 export function App() {
   return (
-    <HashRouter>
+    <BrowserRouter>
+      <InstallPrompt />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
@@ -65,6 +67,6 @@ export function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   );
 }

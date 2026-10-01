@@ -84,6 +84,7 @@ export function Automation() {
   const [historyFor, setHistoryFor] = useState<number | null>(null);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [runStats, setRunStats] = useState({ total: 0, success: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +101,28 @@ export function Automation() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (automations.length === 0) {
+      setRunStats({ total: 0, success: 0 });
+      return;
+    }
+    let cancelled = false;
+    void Promise.allSettled(automations.map((a) => api.listAutomationRuns(a.id))).then((results) => {
+      if (cancelled) return;
+      let total = 0;
+      let success = 0;
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        total += result.value.length;
+        success += result.value.filter((run) => run.status === "success").length;
+      }
+      setRunStats({ total, success });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [automations]);
 
   function flash(message: string) {
     setNotice(message);
@@ -203,16 +226,41 @@ export function Automation() {
     }
   }
 
+  const activeCount = automations.filter((a) => a.enabled).length;
+  const successRate = runStats.total ? `${Math.round((runStats.success / runStats.total) * 100)}%` : "0%";
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
-        <div className="flex items-center gap-3 mb-1 animate-fade-up">
-          <Icon name="zap" className="w-6 h-6 text-cyan" />
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Automations</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-ink">Automation</h1>
+            <p className="text-sm text-grey mt-1">Let HELIOS handle your repetitive work.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => document.getElementById("automation-name")?.focus()}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Icon name="plus" className="w-4 h-4" />
+            Create Automation
+          </button>
         </div>
-        <p className="text-sm text-grey mb-6 animate-fade-up">
-          Let HELIOS work in the background and report back in your chat timeline.
-        </p>
+
+        <div className="grid sm:grid-cols-3 gap-3 mb-6">
+          <div className="glass rounded-2xl px-5 py-4">
+            <p className="font-display font-bold text-3xl text-ink">{activeCount}</p>
+            <p className="text-xs text-grey mt-1">Active Automations</p>
+          </div>
+          <div className="glass rounded-2xl px-5 py-4">
+            <p className="font-display font-bold text-3xl text-ink">{runStats.total}</p>
+            <p className="text-xs text-grey mt-1">Total Executed</p>
+          </div>
+          <div className="glass rounded-2xl px-5 py-4">
+            <p className="font-display font-bold text-3xl text-ink">{successRate}</p>
+            <p className="text-xs text-grey mt-1">Success Rate</p>
+          </div>
+        </div>
 
         <form
           onSubmit={handleCreate}
@@ -232,6 +280,7 @@ export function Automation() {
               ))}
             </select>
             <input
+              id="automation-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={`Name (default: ${PRESETS[preset].label})`}
@@ -349,13 +398,17 @@ export function Automation() {
                     onClick={() => toggle(a)}
                     disabled={busyId === a.id}
                     aria-label={a.enabled ? "Disable" : "Enable"}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
-                      a.enabled
-                        ? "bg-mint/10 text-mint border-mint/30"
-                        : "bg-white/[0.04] text-faint border-line"
+                    role="switch"
+                    aria-checked={a.enabled}
+                    className={`relative w-10 h-6 rounded-full p-0.5 transition-colors disabled:opacity-40 ${
+                      a.enabled ? "bg-blue" : "bg-line"
                     }`}
                   >
-                    {a.enabled ? "ON" : "OFF"}
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                        a.enabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
                   </button>
                 </div>
 

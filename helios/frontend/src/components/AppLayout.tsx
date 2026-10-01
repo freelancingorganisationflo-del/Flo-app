@@ -1,54 +1,56 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Icon } from "@/components/Icon";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface NavItem {
   to: string;
   label: string;
   icon: string;
-  section: "Main" | "Workspace" | "System";
 }
 
 const navItems: NavItem[] = [
-  { to: "/dashboard", label: "Home", icon: "home", section: "Main" },
-  { to: "/voice", label: "Voice", icon: "mic", section: "Main" },
-  { to: "/vision", label: "Vision", icon: "eye", section: "Main" },
-  { to: "/chat", label: "Chat", icon: "chat", section: "Main" },
-  { to: "/code", label: "Code", icon: "tools", section: "Main" },
-  { to: "/memory", label: "Memory", icon: "brain", section: "Main" },
-  { to: "/tasks", label: "Tasks", icon: "tasks", section: "Main" },
-  { to: "/search", label: "Web Search", icon: "globe", section: "Workspace" },
-  { to: "/documents", label: "Knowledge Base", icon: "book", section: "Workspace" },
-  { to: "/tools", label: "Tools & Skills", icon: "tools", section: "Workspace" },
-  { to: "/automation", label: "Automation", icon: "zap", section: "Workspace" },
-  { to: "/calendar", label: "Calendar", icon: "calendar", section: "Workspace" },
-  { to: "/files", label: "Files", icon: "folder", section: "System" },
-  { to: "/analytics", label: "Analytics", icon: "analytics", section: "System" },
-  { to: "/settings", label: "Settings", icon: "settings", section: "System" },
+  { to: "/dashboard", label: "Home", icon: "home" },
+  { to: "/chat", label: "Chat", icon: "chat" },
+  { to: "/code", label: "Code", icon: "code" },
+  { to: "/search", label: "Search", icon: "search" },
+  { to: "/vision", label: "Vision", icon: "eye" },
+  { to: "/voice", label: "Voice", icon: "mic" },
+  { to: "/memory", label: "Memory", icon: "brain" },
+  { to: "/tasks", label: "Tasks", icon: "tasks" },
+  { to: "/documents", label: "Documents", icon: "book" },
+  { to: "/automation", label: "Automation", icon: "zap" },
 ];
 
 const mobileNav = navItems.filter((n) =>
-  ["dashboard", "voice", "vision", "chat", "search", "tasks", "memory"].includes(n.to.slice(1))
+  ["/dashboard", "/chat", "/search", "/tasks", "/code"].includes(n.to)
 );
 
 function initials(email: string): string {
   const name = email.split("@")[0] ?? "H";
-  return name.slice(0, 2).toUpperCase();
+  return name.slice(0, 1).toUpperCase();
 }
 
-function Logo() {
+function displayName(email?: string): string {
+  if (!email) return "Operator";
+  return (email.split("@")[0] ?? "Operator").replace(/[._-]/g, " ");
+}
+
+function Logo({ collapsed }: { collapsed?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative w-9 h-9 shrink-0">
-        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan via-blue to-violet shadow-glow-cyan animate-pulse-glow" />
-        <div className="absolute inset-[3px] rounded-full bg-navy flex items-center justify-center">
-          <span className="gradient-text font-display font-black text-lg leading-none">H</span>
+    <div className={`flex items-center gap-2.5 ${collapsed ? "justify-center" : ""}`}>
+      <div className="relative w-8 h-8 shrink-0">
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan via-blue to-violet shadow-glow-sm" />
+        <div className="absolute inset-[2px] rounded-full bg-navy3 flex items-center justify-center">
+          <span className="gradient-text font-display font-black text-sm leading-none">H</span>
         </div>
       </div>
-      <span className="font-display font-bold text-lg tracking-[0.18em] text-ink">
-        HELIOS
-      </span>
+      {!collapsed && (
+        <span className="font-display font-bold text-[15px] tracking-[0.22em] text-ink">
+          HELIOS
+        </span>
+      )}
     </div>
   );
 }
@@ -61,266 +63,157 @@ export function AppLayout() {
     () => localStorage.getItem("helios_sidebar") === "collapsed"
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const profileRef = useRef<HTMLDivElement>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem("helios_sidebar", collapsed ? "collapsed" : "expanded");
   }, [collapsed]);
 
   useEffect(() => {
-    setProfileOpen(false);
-    setNotifOpen(false);
+    setDrawerOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
 
   async function handleSignOut() {
     await signOut();
     navigate("/login");
   }
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    setQuery("");
-    navigate("/chat", { state: { query: q } });
-  }
-
-  const renderNav = (isDrawer: boolean, isCollapsed: boolean) =>
-    (["Main", "Workspace", "System"] as const).map((section) => (
-      <div key={section} className={isCollapsed && !isDrawer ? "mt-4" : "mt-5"}>
-        {(!isCollapsed || isDrawer) && (
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-faint mb-1.5">
-            {section}
-          </p>
-        )}
-        <div className={isCollapsed && !isDrawer ? "space-y-1" : "space-y-0.5"}>
-          {navItems
-            .filter((n) => n.section === section)
-            .map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={item.label}
-                className={({ isActive }) =>
-                  `group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-all ${
-                    isCollapsed && !isDrawer ? "justify-center px-0 py-2.5 mx-auto w-10" : "px-3 py-2"
-                  } ${
-                    isActive
-                      ? "text-cyan bg-cyan/[0.08] shadow-glow-sm"
-                      : "text-grey hover:text-ink hover:bg-white/[0.04]"
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && !isCollapsed && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-gradient-to-b from-cyan to-violet shadow-glow-cyan" />
-                    )}
-                    <Icon
-                      name={item.icon}
-                      className={`w-[18px] h-[18px] shrink-0 ${
-                        isActive ? "text-cyan" : "text-grey group-hover:text-ink"
-                      }`}
-                    />
-                    {(!isCollapsed || isDrawer) && (
-                      <span className="truncate">{item.label}</span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-        </div>
-      </div>
-    ));
+  const renderNav = (isDrawer: boolean, isCollapsed: boolean) => (
+    <div className={isCollapsed && !isDrawer ? "space-y-1" : "space-y-0.5"}>
+      {navItems.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          title={item.label}
+          className={({ isActive }) =>
+            `group relative flex items-center gap-3 rounded-xl text-[13px] font-medium transition-all ${
+              isCollapsed && !isDrawer ? "justify-center px-0 py-2.5 mx-auto w-10" : "px-3 py-2"
+            } ${
+              isActive
+                ? "text-cyan bg-cyan/[0.10] shadow-glow-sm"
+                : "text-grey hover:text-ink hover:bg-white/[0.04]"
+            }`
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Icon
+                name={item.icon}
+                className={`w-[18px] h-[18px] shrink-0 ${
+                  isActive ? "text-cyan" : "text-grey group-hover:text-ink"
+                }`}
+              />
+              {(!isCollapsed || isDrawer) && <span className="truncate">{item.label}</span>}
+            </>
+          )}
+        </NavLink>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="h-screen flex flex-col bg-navy text-ink overflow-hidden relative">
-      {/* ambient background layers */}
-      <div className="fixed inset-0 pointer-events-none bg-aurora" aria-hidden="true" />
-      <div className="fixed inset-0 pointer-events-none bg-grid opacity-50" aria-hidden="true" />
-
-      {/* top bar */}
-      <header className="relative z-30 shrink-0 glass-strong border-b border-line">
-        <div className="flex items-center gap-3 px-4 h-16">
-          <button
-            onClick={() => {
-              if (window.innerWidth < 1024) setDrawerOpen(true);
-              else setCollapsed((c) => !c);
-            }}
-            aria-label="Toggle navigation"
-            className="p-2 rounded-lg text-grey hover:text-ink hover:bg-white/[0.06] transition-colors lg:hidden"
-          >
-            <Icon name="menu" className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            aria-label="Collapse sidebar"
-            className="hidden lg:flex p-2 rounded-lg text-grey hover:text-ink hover:bg-white/[0.06] transition-colors"
-          >
-            <Icon
-              name={collapsed ? "chevron-right" : "chevron-left"}
-              className="w-5 h-5"
-            />
-          </button>
-
-          <div className="hidden sm:block">
-            <Logo />
-          </div>
-
-          <form onSubmit={handleSearch} className="flex-1 flex justify-center min-w-0">
-            <div className="relative w-full max-w-xl group">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint group-focus-within:text-cyan transition-colors">
-                <Icon name="search" className="w-4 h-4" />
-              </span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search anything…"
-                className="w-full pl-10 pr-4 py-2 rounded-xl glass text-sm text-ink placeholder:text-faint focus:outline-none focus:border-cyan/50 focus:shadow-glow-sm border border-transparent transition-all"
-              />
-            </div>
-          </form>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full glass text-[11px] font-semibold text-mint tracking-wide">
-              <span className="w-1.5 h-1.5 rounded-full bg-mint shadow-glow-sm animate-blink" />
-              HELIOS Online
-            </span>
-
-            {/* voice */}
-            <button
-              onClick={() => navigate("/voice")}
-              aria-label="Voice assistant"
-              title="Talk to HELIOS"
-              className="relative p-2.5 rounded-xl text-grey hover:text-cyan hover:bg-white/[0.06] transition-colors"
-            >
-              <Icon name="mic" className="w-5 h-5" />
-            </button>
-
-            {/* notifications */}
-            <div className="relative" ref={notifRef}>
-              <button
-                onClick={() => setNotifOpen((o) => !o)}
-                aria-label="Notifications"
-                className="p-2.5 rounded-xl text-grey hover:text-ink hover:bg-white/[0.06] transition-colors"
-              >
-                <Icon name="bell" className="w-5 h-5" />
-              </button>
-              {notifOpen && (
-                <div className="absolute right-0 mt-2 w-72 glass-strong rounded-xl p-1.5 shadow-panel border border-line animate-fade-in">
-                  <p className="px-3 py-2 text-xs font-semibold text-faint uppercase tracking-widest">
-                    Notifications
-                  </p>
-                  <div className="px-3 py-4 text-center text-sm text-grey">
-                    All systems nominal. No new notifications.
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* profile */}
-            <div className="relative" ref={profileRef}>
-              <button
-                onClick={() => setProfileOpen((o) => !o)}
-                aria-label="Profile menu"
-                className="flex items-center gap-2 p-1 pr-2 rounded-xl glass hover:border-cyan/40 transition-all"
-              >
-                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-xs">
-                  {user ? initials(user.email) : "H"}
-                </span>
-                <span className="hidden xl:inline-flex items-center gap-1 text-xs text-grey">
-                  {user?.email}
-                  <Icon name="chevron-down" className="w-3.5 h-3.5" />
-                </span>
-              </button>
-              {profileOpen && (
-                <div className="absolute right-0 mt-2 w-60 glass-strong rounded-xl p-1.5 shadow-panel border border-line animate-fade-in">
-                  <div className="px-3 py-2.5 border-b border-line mb-1">
-                    <p className="text-sm font-semibold text-ink truncate">{user?.email}</p>
-                    <p className="text-[11px] text-faint mt-0.5">Operator · HELIOS Core</p>
-                  </div>
-                  <NavLink
-                    to="/settings"
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-grey hover:text-ink hover:bg-white/[0.05] transition-colors"
-                  >
-                    <Icon name="settings" className="w-4 h-4" />
-                    Settings
-                  </NavLink>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red hover:bg-red/10 transition-colors"
-                  >
-                    <Icon name="logout" className="w-4 h-4" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="h-[100dvh] flex flex-col bg-navy text-ink overflow-hidden relative">
+      <div
+        className="fixed inset-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          background:
+            "radial-gradient(50% 40% at 18% 0%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%), radial-gradient(40% 40% at 90% 8%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%)",
+        }}
+      />
 
       <div className="relative z-10 flex flex-1 min-h-0">
-        {/* desktop sidebar */}
         <aside
           className={`hidden lg:flex flex-col shrink-0 border-r border-line glass-strong transition-all duration-300 ${
-            collapsed ? "w-[84px]" : "w-64"
+            collapsed ? "w-[76px]" : "w-[220px]"
           }`}
         >
-          <div className="flex-1 overflow-y-auto scrollbar-slim px-3 py-4">
+          <div className={`flex items-center h-16 px-4 ${collapsed ? "justify-center" : "justify-between"}`}>
+            <Logo collapsed={collapsed} />
+            {!collapsed && (
+              <button
+                onClick={() => setCollapsed(true)}
+                aria-label="Collapse sidebar"
+                className="p-1.5 rounded-lg text-faint hover:text-ink hover:bg-white/[0.06]"
+              >
+                <Icon name="chevron-left" className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {collapsed && (
+            <button
+              onClick={() => setCollapsed(false)}
+              aria-label="Expand sidebar"
+              className="mx-auto mb-2 p-1.5 rounded-lg text-faint hover:text-ink hover:bg-white/[0.06]"
+            >
+              <Icon name="chevron-right" className="w-4 h-4" />
+            </button>
+          )}
+          <div className="flex-1 overflow-y-auto scrollbar-slim px-2.5 py-2">
             {renderNav(false, collapsed)}
           </div>
-          <div className="shrink-0 border-t border-line p-3">
+          <div className="shrink-0 border-t border-line p-2.5 space-y-1">
+            <NavLink
+              to="/settings"
+              title="Settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-xl text-[13px] font-medium transition-all ${
+                  collapsed ? "justify-center px-0 py-2.5 w-10 mx-auto" : "px-3 py-2"
+                } ${isActive ? "text-cyan bg-cyan/[0.10]" : "text-grey hover:text-ink hover:bg-white/[0.04]"}`
+              }
+            >
+              <Icon name="settings" className="w-[18px] h-[18px]" />
+              {!collapsed && <span>Settings</span>}
+            </NavLink>
             {collapsed ? (
-              <div className="flex justify-center">
-                <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-xs">
+              <button
+                onClick={() => navigate("/settings")}
+                className="flex justify-center w-full py-1"
+                aria-label="Profile"
+              >
+                <span className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-xs">
                   {user ? initials(user.email) : "H"}
                 </span>
-              </div>
+              </button>
             ) : (
-              <div className="flex items-center gap-3 px-2 py-1.5">
-                <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-xs">
+              <button
+                onClick={() => navigate("/settings")}
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/[0.04] transition-colors text-left"
+              >
+                <span className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-xs shrink-0">
                   {user ? initials(user.email) : "H"}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-ink truncate">
-                    {user?.email?.split("@")[0] ?? "Operator"}
+                  <p className="text-xs font-semibold text-ink truncate capitalize">
+                    {displayName(user?.email)}
                   </p>
-                  <p className="text-[11px] text-mint flex items-center gap-1">
-                    <span className="w-1 h-1 rounded-full bg-mint" />
-                    Synced
-                  </p>
+                  <p className="text-[11px] text-faint">Pro User</p>
                 </div>
-              </div>
+              </button>
             )}
           </div>
         </aside>
 
-        {/* main */}
-        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <Outlet />
-        </main>
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <header className="lg:hidden shrink-0 flex items-center gap-3 px-4 h-14 border-b border-line glass-strong">
+            <button
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open navigation"
+              className="p-2 rounded-lg text-grey hover:text-ink"
+            >
+              <Icon name="menu" className="w-5 h-5" />
+            </button>
+            <Logo />
+            <div className="ml-auto flex items-center gap-1">
+              <ThemeToggle compact />
+            </div>
+          </header>
+          <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            <Outlet />
+          </main>
+        </div>
       </div>
 
-      {/* mobile bottom nav */}
-      <nav className="relative z-30 lg:hidden shrink-0 glass-strong border-t border-line">
+      <nav className="relative z-30 lg:hidden shrink-0 glass-strong border-t border-line pb-[env(safe-area-inset-bottom)]">
         <div className="grid grid-cols-5">
           {mobileNav.map((item) => (
             <NavLink
@@ -332,17 +225,13 @@ export function AppLayout() {
                 }`
               }
             >
-              <Icon
-                name={item.icon}
-                className={`w-5 h-5 ${location.pathname === item.to ? "drop-shadow-[0_0_6px_rgba(46,230,255,0.8)]" : ""}`}
-              />
-              {item.label.split(" ")[0]}
+              <Icon name={item.icon} className="w-5 h-5" />
+              {item.label}
             </NavLink>
           ))}
         </div>
       </nav>
 
-      {/* mobile drawer */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
@@ -355,18 +244,23 @@ export function AppLayout() {
               <button
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close menu"
-                className="p-2 rounded-lg text-grey hover:text-ink hover:bg-white/[0.06]"
+                className="p-2 rounded-lg text-grey hover:text-ink"
               >
                 <Icon name="x" className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto scrollbar-slim px-3 py-3">
-              {renderNav(true, false)}
-            </div>
-            <div className="shrink-0 border-t border-line p-3">
+            <div className="flex-1 overflow-y-auto scrollbar-slim px-3 py-3">{renderNav(true, false)}</div>
+            <div className="shrink-0 border-t border-line p-3 space-y-2">
+              <NavLink
+                to="/settings"
+                className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-grey hover:text-ink"
+              >
+                <Icon name="settings" className="w-4 h-4" />
+                Settings
+              </NavLink>
               <button
                 onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm text-red hover:bg-red/10 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-red hover:bg-red/10"
               >
                 <Icon name="logout" className="w-4 h-4" />
                 Sign out

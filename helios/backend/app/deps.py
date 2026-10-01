@@ -28,7 +28,15 @@ from .llm_gateway.client import LLMClient
 
 
 def get_llm() -> LLMClient:
-    return LLMClient()
+    return LLMClient(task="general")
+
+
+def get_automation_llm() -> LLMClient:
+    return LLMClient(task="automation")
+
+
+def get_code_llm() -> LLMClient:
+    return LLMClient(task="code")
 
 
 from .voice.client import VoiceClient

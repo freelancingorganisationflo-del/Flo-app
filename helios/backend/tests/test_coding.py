@@ -4,7 +4,7 @@ import pytest_asyncio
 from app.coding.decision import should_search_code
 from app.coding.prompt import build_coding_system_prompt
 from app.coding.service import normalize_messages, stream_code
-from app.deps import get_llm
+from app.deps import get_code_llm
 from app.llm_gateway.client import ChatResult, LLMClient, LLMProviderError, single_shot_events
 from app.main import app
 
@@ -50,9 +50,9 @@ async def authed_client(client):
 @pytest_asyncio.fixture
 async def fake_code_llm(client):
     fake = FakeCodeLLM()
-    app.dependency_overrides[get_llm] = lambda: fake
+    app.dependency_overrides[get_code_llm] = lambda: fake
     yield fake
-    app.dependency_overrides.pop(get_llm, None)
+    app.dependency_overrides.pop(get_code_llm, None)
 
 
 def test_coding_prompt_has_code_rules_and_style():

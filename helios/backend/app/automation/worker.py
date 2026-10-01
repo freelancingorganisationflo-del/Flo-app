@@ -18,7 +18,7 @@ async def run_automation_worker(
     while not stop_event.is_set():
         try:
             async with SessionLocal() as db:
-                await run_due_automations(db, LLMClient())
+                await run_due_automations(db, LLMClient(task="automation"))
         except Exception:
             logger.exception("automation worker error")
         try:

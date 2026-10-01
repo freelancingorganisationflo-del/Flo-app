@@ -192,7 +192,12 @@ async def authed_client(client):
     return client, {"Authorization": f"Bearer {token}"}
 
 
-async def test_stream_falls_back_to_default_model_on_402(authed_client):
+async def test_stream_falls_back_to_default_model_on_402(authed_client, monkeypatch):
+    monkeypatch.setattr(
+        settings,
+        "user_llm_available_models",
+        ["gpt-4o-mini", "openai/gpt-4o-mini"],
+    )
     client, headers = authed_client
     fake = FallbackStreamLLM()
     app.dependency_overrides[get_llm] = lambda: fake

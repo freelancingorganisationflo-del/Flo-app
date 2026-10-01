@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api, effectiveVoice } from "@/lib/api";
-import { AiOrb } from "@/components/AiOrb";
+import { HeliosOrb } from "@/components/HeliosOrb";
 import { Icon } from "@/components/Icon";
 
 interface VoiceLine {
@@ -36,7 +35,6 @@ const HINT_LABELS: Record<string, string> = {
 };
 
 export function Voice() {
-  const navigate = useNavigate();
   const [orbState, setOrbState] = useState<OrbState>("idle");
   const [lines, setLines] = useState<VoiceLine[]>([]);
   const [busy, setBusy] = useState(false);
@@ -255,8 +253,11 @@ export function Voice() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 pt-3 pb-1">
-        <h2 className="font-display font-bold text-lg text-ink">Voice Assistant</h2>
+      <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 pt-5 pb-2">
+        <div>
+          <h2 className="font-display font-bold text-lg text-ink">Voice Assistant</h2>
+          <p className="text-[12px] text-faint mt-0.5">Speak with HELIOS</p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={reset}
@@ -266,14 +267,6 @@ export function Voice() {
           >
             <Icon name="refresh" className="w-3.5 h-3.5" />
             Reset
-          </button>
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl glass text-xs font-semibold text-grey hover:text-cyan hover:border-cyan/40 transition-all"
-          >
-            <Icon name="chevron-left" className="w-3.5 h-3.5" />
-            Back
           </button>
         </div>
       </div>
@@ -297,18 +290,30 @@ export function Voice() {
             orbState !== "idle" ? "cursor-default" : "hover:scale-105 active:scale-95"
           }`}
         >
-          <AiOrb state={orbState === "speaking" ? "thinking" : orbState} size={220} className="animate-float" />
+          <div className="relative flex items-center justify-center">
+            <HeliosOrb state={orbState === "speaking" ? "thinking" : orbState === "idle" ? "listening" : orbState} size={240} className="animate-float" />
+            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <Icon name="mic" className="w-10 h-10 text-white drop-shadow-[0_0_12px_rgba(59,130,246,0.8)]" />
+            </span>
+          </div>
         </button>
 
-        <div className="mt-6 text-center">
+        <div className="mt-8 text-center">
           <p className="font-display font-semibold text-sm tracking-widest uppercase text-cyan text-glow">
             {HINT_LABELS[orbState]}
           </p>
-          {orbState === "idle" && (
-            <p className="mt-1 text-xs text-faint">
-              Tap the core and I'll greet you and walk you through your tasks.
-            </p>
-          )}
+          <div className="mt-4 flex items-end justify-center gap-1 h-8">
+            {Array.from({ length: 24 }).map((_, i) => (
+              <span
+                key={i}
+                className="w-1 rounded-full bg-cyan/70"
+                style={{
+                  height: orbState === "listening" || orbState === "speaking" ? `${8 + ((i * 17) % 22)}px` : "6px",
+                  animation: orbState === "listening" || orbState === "speaking" ? `pulse-glow ${0.8 + (i % 5) * 0.12}s ease-in-out infinite` : undefined,
+                }}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -331,9 +336,21 @@ export function Voice() {
               ))}
             </div>
           ) : (
-            <p className="text-center text-xs text-faint">
-              Spoken conversation will appear here.
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-faint px-3 py-1.5 rounded-full glass">English (US)</span>
+              {(orbState === "listening" || orbState === "speaking" || busy) ? (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-red/15 text-red text-xs font-semibold border border-red/30"
+                >
+                  <Icon name="stop" className="w-3.5 h-3.5" />
+                  Stop
+                </button>
+              ) : (
+                <p className="text-center text-xs text-faint">Spoken conversation will appear here.</p>
+              )}
+            </div>
           )}
         </div>
       </div>

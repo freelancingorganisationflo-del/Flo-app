@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Spinner } from "@/components/Spinner";
+import { HeliosOrb } from "@/components/HeliosOrb";
 
 export function Signup() {
   const { signUp } = useAuth();
@@ -34,21 +35,16 @@ export function Signup() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-navy px-4 relative overflow-hidden">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-navy px-4 relative overflow-hidden">
       <div className="fixed inset-0 pointer-events-none bg-aurora" aria-hidden="true" />
       <div className="fixed inset-0 pointer-events-none bg-grid opacity-40" aria-hidden="true" />
       <div className="relative w-full max-w-sm animate-fade-up">
         <div className="mb-8 text-center">
-          <div className="relative w-14 h-14 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan via-blue to-violet shadow-glow-cyan animate-pulse-glow" />
-            <div className="absolute inset-[3px] rounded-2xl bg-navy flex items-center justify-center">
-              <span className="gradient-text font-display font-black text-2xl">H</span>
-            </div>
-          </div>
+          <HeliosOrb size={88} className="mx-auto mb-4" showStatus={false} />
           <h1 className="font-display font-bold text-2xl text-ink">Create your account</h1>
           <p className="text-sm text-grey mt-1">Your personal assistant awaits</p>
         </div>
-        <form onSubmit={handleSubmit} className="glass-strong rounded-2xl p-6 shadow-panel space-y-4 glow-ring">
+        <form onSubmit={handleSubmit} className="glass-strong rounded-2xl p-6 shadow-panel space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-semibold text-ink mb-1">
               Email

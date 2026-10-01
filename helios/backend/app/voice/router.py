@@ -10,7 +10,8 @@ from ..chat.service import run_chat
 from ..config import settings
 from ..db import get_db
 from ..deps import get_current_user, get_llm, get_voice
-from ..llm_gateway.client import LLMClient
+from ..llm_gateway.client import LLMClient, LLMProviderError
+from ..llm_gateway.profiles import resolve_stt, resolve_tts
 from ..llm_gateway.routing import route_model
 from ..models import User
 from ..tasks.service import list_tasks
@@ -66,9 +67,11 @@ def _compose_wake(user: User, tasks: list) -> str:
 
 @router.get("/config")
 async def voice_config(user: User = Depends(get_current_user)) -> dict:
+    stt = resolve_stt()
+    tts = resolve_tts()
     return {
-        "stt_model": settings.user_stt_model,
-        "tts_model": settings.user_tts_model,
+        "stt_model": stt.model,
+        "tts_model": tts.model,
         "tts_voice": settings.user_tts_voice,
         "tts_voices": settings.user_tts_available_voices,
     }
@@ -145,6 +148,12 @@ async def talk(
         reply, _tool_events, _used_model = await run_chat(
             db, user, text, llm, model=model, spoken=True
         )
+    except LLMProviderError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except Exception:
         await db.rollback()
         raise

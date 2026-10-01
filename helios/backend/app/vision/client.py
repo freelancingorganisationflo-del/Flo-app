@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 
 from ..config import settings
+from ..llm_gateway.profiles import resolve_route
 from ..style import build_style_prompt, build_style_reminder
 
 # OpenRouter / OpenAI-compatible chat-completions content format for images.
@@ -44,12 +45,12 @@ def _vision_system_prompt() -> str:
 
 
 def _default_model() -> str:
-    return settings.user_vision_model or settings.user_llm_model
+    return settings.user_vision_model or resolve_route("general").model
 
 
 def enabled_models() -> list[str]:
     """Vision-capable models the user actually enabled (or the configured default)."""
-    configured = {m for m in (settings.user_llm_available_models or [])}
+    configured = {m for m in resolve_route("general").available_models}
     allowed = [m for m in (settings.vision_models_allowlist or []) if m in configured]
     default = _default_model()
     if default and default not in allowed:
@@ -82,8 +83,10 @@ class VisionClient:
     """Multimodal image understanding via the OpenAI-compatible LLM gateway."""
 
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.api_key = settings.user_llm_api_key
-        self.base_url = settings.user_llm_base_url.rstrip("/")
+        route = resolve_route("general")
+        self.api_key = route.api_key
+        self.base_url = route.base_url.rstrip("/")
+        self._key_env = route.key_env
         self.timeout = settings.llm_timeout_seconds
         self.max_tokens = settings.user_vision_max_tokens
         self.max_image_bytes = settings.vision_max_image_bytes
@@ -104,7 +107,7 @@ class VisionClient:
     ) -> str:
         """Describe or answer questions about an image using a vision model."""
         if not self.api_key:
-            raise VisionProviderError("USER_LLM_API_KEY is not configured")
+            raise VisionProviderError(f"{self._key_env} is not configured")
         selected = resolve_model(model)
         if mime not in IMAGE_MIME:
             raise VisionProviderError(f"Unsupported image type: {mime}")

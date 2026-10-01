@@ -1,11 +1,11 @@
 import io
 import re
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from ..config import settings
+from ..llm_gateway.profiles import resolve_stt, resolve_tts
 
 STT_MIME = {
     "wav": "audio/wav",
@@ -29,16 +29,23 @@ class VoiceClient:
     """Provider-agnostic speech-to-text and text-to-speech via the LLM gateway."""
 
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.api_key = settings.user_llm_api_key
-        self.base_url = settings.user_llm_base_url.rstrip("/")
-        self.stt_model = settings.user_stt_model
-        self.tts_model = settings.user_tts_model
+        stt = resolve_stt()
+        tts = resolve_tts()
+        self.stt_api_key = stt.api_key
+        self.stt_base_url = stt.base_url.rstrip("/")
+        self.stt_model = stt.model
+        self.stt_key_env = stt.key_env
+        self.tts_api_key = tts.api_key
+        self.tts_base_url = tts.base_url.rstrip("/")
+        self.tts_model = tts.model
+        self.tts_key_env = tts.key_env
+        self.tts_provider = tts.provider
         self.tts_voice = settings.user_tts_voice
         self.timeout = settings.llm_timeout_seconds
         self._transport = transport
 
-    def _headers(self, json: bool = False) -> dict[str, str]:
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+    def _headers(self, *, api_key: str, json: bool = False) -> dict[str, str]:
+        headers = {"Authorization": f"Bearer {api_key}"}
         if json:
             headers["Content-Type"] = "application/json"
         return headers
@@ -54,8 +61,8 @@ class VoiceClient:
         self, audio: bytes, audio_format: str = "wav", language: str | None = None
     ) -> str:
         """Transcribe audio bytes to text (OpenAI-compatible multipart)."""
-        if not self.api_key:
-            raise VoiceProviderError("USER_LLM_API_KEY is not configured")
+        if not self.stt_api_key:
+            raise VoiceProviderError(f"{self.stt_key_env} is not configured")
         mime = STT_MIME.get(audio_format, "application/octet-stream")
         data: dict[str, str] = {"model": self.stt_model}
         if language:
@@ -63,10 +70,10 @@ class VoiceClient:
         files = {"file": (f"audio.{audio_format}", audio, mime)}
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
-                f"{self.base_url}/audio/transcriptions",
+                f"{self.stt_base_url}/audio/transcriptions",
                 data=data,
                 files=files,
-                headers=self._headers(),
+                headers=self._headers(api_key=self.stt_api_key),
             )
             body = resp.json()
         if resp.status_code != 200:
@@ -108,8 +115,8 @@ class VoiceClient:
         return data
 
     async def _synthesize_gateway(self, text: str, voice: str | None) -> bytes:
-        if not self.api_key:
-            raise VoiceProviderError("USER_LLM_API_KEY is not configured")
+        if not self.tts_api_key:
+            raise VoiceProviderError(f"{self.tts_key_env} is not configured")
         payload: dict[str, Any] = {
             "model": self.tts_model,
             "input": text,
@@ -118,9 +125,9 @@ class VoiceClient:
         }
         async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as client:
             resp = await client.post(
-                f"{self.base_url}/audio/speech",
+                f"{self.tts_base_url}/audio/speech",
                 json=payload,
-                headers=self._headers(json=True),
+                headers=self._headers(api_key=self.tts_api_key, json=True),
             )
             data = resp.content
         if resp.status_code != 200:

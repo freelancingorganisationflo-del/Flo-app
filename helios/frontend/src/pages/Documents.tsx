@@ -106,14 +106,16 @@ export function Documents() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
-        <div className="flex items-center gap-3 mb-1 animate-fade-up">
-          <Icon name="book" className="w-6 h-6 text-blue" />
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Knowledge base</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-ink">Knowledge Base</h1>
+            <p className="text-sm text-grey mt-1">Your personal searchable library</p>
+          </div>
+          <label htmlFor="file-upload" className="btn-primary flex items-center gap-2 cursor-pointer">
+            {uploading ? <Spinner className="w-4 h-4" /> : <Icon name="plus" className="w-4 h-4" />}
+            {uploading ? "Uploading…" : "Upload Document"}
+          </label>
         </div>
-        <p className="text-sm text-grey mb-6 animate-fade-up">
-          Upload documents or paste a URL. HELIOS indexes them and answers from them
-          in chat with source attribution.
-        </p>
 
         <div className="grid md:grid-cols-2 gap-3 mb-6 animate-fade-up" style={{ animationDelay: "60ms" }}>
           <div className="glass rounded-2xl p-4">
@@ -208,7 +210,18 @@ export function Documents() {
           </div>
         )}
 
-        <h2 className="font-display font-bold text-lg text-ink mb-2 animate-fade-up">Documents</h2>
+        <div className="flex gap-2 mb-4">
+          {["All Documents", "Processing", "Categories"].map((tab, i) => (
+            <span
+              key={tab}
+              className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
+                i === 0 ? "bg-cyan/20 text-cyan border border-cyan/30" : "glass text-faint"
+              }`}
+            >
+              {tab}
+            </span>
+          ))}
+        </div>
         {loading ? (
           <div className="flex justify-center py-10">
             <Spinner />
@@ -219,39 +232,40 @@ export function Documents() {
             No documents yet. Upload one to get started.
           </div>
         ) : (
-          <ul className="space-y-2 animate-fade-in">
-            {docs.map((d) => (
-              <li
-                key={d.id}
-                className="glass rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-blue/25 transition-all"
-              >
-                <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue/20 to-violet/20 border border-blue/25 flex items-center justify-center text-blue shrink-0">
-                  <Icon name="file" className="w-4 h-4" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate text-ink">{d.title}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <span className={`chip ${typeColor[d.type] ?? typeColor.file}`}>
-                      {d.type === "url" ? "URL" : "File"}
-                    </span>
-                    <span className="text-[11px] text-faint">{formatDate(d.created_at)}</span>
-                    {d.source && (
-                      <span className="text-[11px] text-faint truncate max-w-[220px]">
-                        {d.source}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleDelete(d.id)}
-                  aria-label="Delete document"
-                  className="text-faint hover:text-red px-2 py-1 rounded-lg hover:bg-red/10 transition-colors text-sm"
+          <div className="glass rounded-2xl overflow-hidden">
+            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_80px_140px_40px] gap-3 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-faint border-b border-line">
+              <span>Name</span>
+              <span>Type</span>
+              <span>Date</span>
+              <span />
+            </div>
+            <ul>
+              {docs.map((d) => (
+                <li
+                  key={d.id}
+                  className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_80px_140px_40px] gap-2 sm:gap-3 px-4 py-3 items-center border-b border-line last:border-0 hover:bg-white/[0.02]"
                 >
-                  <Icon name="trash" className="w-4 h-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className="w-8 h-8 rounded-lg bg-blue/10 text-blue flex items-center justify-center shrink-0">
+                      <Icon name="file" className="w-4 h-4" />
+                    </span>
+                    <span className="font-medium truncate text-ink">{d.title}</span>
+                  </span>
+                  <span className={`chip w-fit ${typeColor[d.type] ?? typeColor.file}`}>
+                    {d.type === "url" ? "URL" : "File"}
+                  </span>
+                  <span className="text-[12px] text-faint">{formatDate(d.created_at)}</span>
+                  <button
+                    onClick={() => handleDelete(d.id)}
+                    aria-label="Delete document"
+                    className="text-faint hover:text-red justify-self-end"
+                  >
+                    <Icon name="trash" className="w-4 h-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>

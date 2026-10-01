@@ -58,9 +58,25 @@ def test_classify_general_chat():
     assert classify_task("How are you today?") is None
 
 
+def _enable_routed_models(monkeypatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(
+        settings,
+        "user_llm_available_models",
+        [
+            "gpt-4o-mini",
+            "openai/gpt-4o-mini",
+            "anthropic/claude-haiku-4.5",
+            "deepseek/deepseek-chat",
+        ],
+    )
+
+
 def test_route_model_coding(monkeypatch):
     from app.config import settings
 
+    _enable_routed_models(monkeypatch)
     monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     assert route_model("Write code to fix the bug") == "anthropic/claude-haiku-4.5"
 
@@ -68,6 +84,7 @@ def test_route_model_coding(monkeypatch):
 def test_route_model_scripting(monkeypatch):
     from app.config import settings
 
+    _enable_routed_models(monkeypatch)
     monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     assert route_model("Make a script to automate downloads") == "openai/gpt-4o-mini"
 
@@ -85,6 +102,7 @@ def test_route_model_general_uses_default():
 async def test_chat_auto_routes_coding_task(authed_client, fake_llm, monkeypatch):
     from app.config import settings
 
+    _enable_routed_models(monkeypatch)
     monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     client, headers = authed_client
     resp = await client.post(
@@ -97,6 +115,7 @@ async def test_chat_auto_routes_coding_task(authed_client, fake_llm, monkeypatch
 async def test_chat_auto_routes_default_string(authed_client, fake_llm, monkeypatch):
     from app.config import settings
 
+    _enable_routed_models(monkeypatch)
     monkeypatch.setattr(settings, "llm_auto_route_free_only", False)
     client, headers = authed_client
     resp = await client.post(

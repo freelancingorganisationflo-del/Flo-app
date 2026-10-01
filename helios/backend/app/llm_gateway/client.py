@@ -1,11 +1,16 @@
 import asyncio
 import json
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 import httpx
 
 from ..config import settings
+from .profiles import LLMRoute, resolve_route
+
+logger = logging.getLogger(__name__)
 
 # Provider statuses that are worth retrying: rate limits, transient upstream
 # failures and gateway timeouts. Client errors (401/402/403/404) are fatal.
@@ -90,14 +95,45 @@ def single_shot_events(result: ChatResult) -> list[dict[str, Any]]:
 
 
 class LLMClient:
-    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.api_key = settings.user_llm_api_key
-        self.base_url = settings.user_llm_base_url.rstrip("/")
-        self.model = settings.user_llm_model
-        self.embedding_model = settings.user_llm_embedding_model
+    def __init__(
+        self,
+        transport: httpx.AsyncBaseTransport | None = None,
+        *,
+        task: str = "general",
+        route: LLMRoute | None = None,
+    ) -> None:
+        self.route = route or resolve_route(task)
+        self.task = self.route.task
+        self.provider = self.route.provider
+        self.api_key = self.route.api_key
+        self.base_url = self.route.base_url.rstrip("/")
+        self.model = self.route.model
+        self.fallback_model = self.route.fallback_model
+        self.available_models = list(self.route.available_models)
+        self.embedding_api_key = self.route.embedding_api_key
+        self.embedding_base_url = self.route.embedding_base_url.rstrip("/")
+        self.embedding_model = self.route.embedding_model
         self.max_tokens = settings.user_llm_max_tokens
         self.timeout = settings.llm_timeout_seconds
         self._transport = transport
+        self._key_env = self.route.key_env
+        self._embedding_key_env = self.route.embedding_key_env
+
+    def _missing_key_error(self, *, embedding: bool = False) -> LLMProviderError:
+        env_name = self._embedding_key_env if embedding else self._key_env
+        return LLMProviderError(f"{env_name} is not configured")
+
+    def _log(self, *, success: bool, model: str | None, started: float, error: str | None = None) -> None:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "llm task=%s provider=%s model=%s latency_ms=%s success=%s%s",
+            self.task,
+            self.provider,
+            model or self.model,
+            latency_ms,
+            success,
+            f" error={error}" if error else "",
+        )
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -137,11 +173,35 @@ class LLMClient:
         max_tokens: int | None = None,
     ) -> ChatResult:
         if not self.api_key:
-            raise LLMProviderError("USER_LLM_API_KEY is not configured")
+            raise self._missing_key_error()
+        selected = model or self.model
+        models_to_try = [selected]
+        if self.fallback_model and self.fallback_model not in models_to_try:
+            models_to_try.append(self.fallback_model)
+        last_error: LLMProviderError | None = None
+        for index, current in enumerate(models_to_try):
+            try:
+                return await self._complete_once(messages, tools, current, max_tokens)
+            except LLMProviderError as exc:
+                last_error = exc
+                if index < len(models_to_try) - 1:
+                    continue
+                raise
+        assert last_error is not None
+        raise last_error
+
+    async def _complete_once(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+        model: str | None,
+        max_tokens: int | None,
+    ) -> ChatResult:
         payload = self._payload(messages, tools, model, max_tokens)
         url = f"{self.base_url}/chat/completions"
         attempts = self._attempts()
         last_error: LLMProviderError | None = None
+        started = time.monotonic()
         for attempt in range(1, attempts + 1):
             try:
                 async with httpx.AsyncClient(
@@ -164,7 +224,9 @@ class LLMClient:
                         "LLM provider returned an unexpected response: missing 'choices'",
                         retryable=True,
                     )
-                return self._parse_choice(choices[0])
+                parsed = self._parse_choice(choices[0])
+                self._log(success=True, model=model, started=started)
+                return parsed
             except httpx.RequestError as exc:
                 last_error = LLMProviderError(
                     f"LLM provider request failed: {exc}", retryable=True
@@ -172,10 +234,12 @@ class LLMClient:
             except LLMProviderError as exc:
                 last_error = exc
                 if not exc.retryable:
+                    self._log(success=False, model=model, started=started, error=str(exc))
                     raise
             if attempt < attempts:
                 await self._sleep_before_retry(attempt)
         assert last_error is not None
+        self._log(success=False, model=model, started=started, error=str(last_error))
         raise last_error
 
     async def stream_complete(
@@ -188,10 +252,11 @@ class LLMClient:
         """Yield ``{"type": "delta", "text": ...}`` events and finally a
         ``{"type": "result", "result": ChatResult}`` event."""
         if not self.api_key:
-            raise LLMProviderError("USER_LLM_API_KEY is not configured")
+            raise self._missing_key_error()
         payload = self._payload(messages, tools, model, max_tokens, stream=True)
         url = f"{self.base_url}/chat/completions"
         attempts = self._attempts()
+        started = time.monotonic()
         for attempt in range(1, attempts + 1):
             produced = False
             content_parts: list[str] = []
@@ -237,6 +302,7 @@ class LLMClient:
                             self._accumulate_tool_calls(
                                 tool_calls_acc, delta.get("tool_calls") or []
                             )
+                self._log(success=True, model=model, started=started)
                 yield {
                     "type": "result",
                     "result": self._build_result("".join(content_parts), tool_calls_acc),
@@ -248,12 +314,15 @@ class LLMClient:
                         f"LLM stream failed: {exc}", retryable=True
                     ) from exc
                 if attempt >= attempts:
-                    raise LLMProviderError(
+                    err = LLMProviderError(
                         f"LLM provider request failed: {exc}", retryable=True
-                    ) from exc
+                    )
+                    self._log(success=False, model=model, started=started, error=str(err))
+                    raise err from exc
                 await self._sleep_before_retry(attempt)
             except LLMProviderError as exc:
                 if produced or not exc.retryable or attempt >= attempts:
+                    self._log(success=False, model=model, started=started, error=str(exc))
                     raise
                 await self._sleep_before_retry(attempt)
 
@@ -337,20 +406,27 @@ class LLMClient:
             assistant_message=message,
         )
 
+    def _embedding_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.embedding_api_key}",
+            "Content-Type": "application/json",
+        }
+
     async def embed(self, text: str) -> list[float]:
-        if not self.api_key:
-            raise LLMProviderError("USER_LLM_API_KEY is not configured")
+        if not self.embedding_api_key:
+            raise self._missing_key_error(embedding=True)
         attempts = self._attempts()
         last_error: LLMProviderError | None = None
+        started = time.monotonic()
         for attempt in range(1, attempts + 1):
             try:
                 async with httpx.AsyncClient(
                     timeout=self.timeout, transport=self._transport
                 ) as client:
                     resp = await client.post(
-                        f"{self.base_url}/embeddings",
+                        f"{self.embedding_base_url}/embeddings",
                         json={"model": self.embedding_model, "input": text},
-                        headers=self._headers(),
+                        headers=self._embedding_headers(),
                     )
                 data = _load_json(resp.content)
                 if resp.status_code != 200:
@@ -371,6 +447,7 @@ class LLMClient:
                         "LLM provider returned an unexpected response: missing embedding",
                         retryable=True,
                     )
+                self._log(success=True, model=self.embedding_model, started=started)
                 return embedding
             except httpx.RequestError as exc:
                 last_error = LLMProviderError(
@@ -379,8 +456,10 @@ class LLMClient:
             except LLMProviderError as exc:
                 last_error = exc
                 if not exc.retryable:
+                    self._log(success=False, model=self.embedding_model, started=started, error=str(exc))
                     raise
             if attempt < attempts:
                 await self._sleep_before_retry(attempt)
         assert last_error is not None
+        self._log(success=False, model=self.embedding_model, started=started, error=str(last_error))
         raise last_error

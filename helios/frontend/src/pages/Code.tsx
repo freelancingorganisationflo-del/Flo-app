@@ -330,11 +330,11 @@ export function Code() {
       <header className="shrink-0 px-4 sm:px-6 py-4 border-b border-line">
         <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan/15 text-cyan">
-            <Icon name="tools" className="w-5 h-5" />
+            <Icon name="code" className="w-5 h-5" />
           </span>
           <div className="min-w-0 flex-1">
             <h1 className="font-display font-bold text-lg text-ink leading-tight">Helios Code</h1>
-            <p className="text-[11px] text-faint truncate">{currentTitle}</p>
+            <p className="text-[11px] text-faint truncate">Build, debug and create with AI · {currentTitle}</p>
           </div>
           <ModelPicker />
           <button

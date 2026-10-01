@@ -5,10 +5,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import settings
 from ..db import get_db
 from ..deps import get_current_user, get_llm
-from ..llm_gateway.client import LLMClient
+from ..llm_gateway.client import LLMClient, LLMProviderError
+from ..llm_gateway.profiles import resolve_route
 from ..llm_gateway.routing import route_model
 from ..models import User
 from ..search.decision import normalize_mode
@@ -24,10 +24,14 @@ class ChatRequest(BaseModel):
     mode: str = "auto"
 
 
+def _general_route():
+    return resolve_route("general")
+
+
 def _resolve_model(model: str | None, message: str) -> str | None:
     if model is None or model in ("default", "auto"):
         return route_model(message)
-    available = settings.user_llm_available_models
+    available = _general_route().available_models
     if model not in available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -38,8 +42,9 @@ def _resolve_model(model: str | None, message: str) -> str | None:
 
 @router.get("/models")
 async def list_models() -> dict:
-    default = settings.user_llm_model
-    models = list(settings.user_llm_available_models)
+    route = _general_route()
+    default = route.model
+    models = list(route.available_models)
     if default not in models:
         models.insert(0, default)
     return {"default": default, "models": models}
@@ -55,20 +60,26 @@ async def chat(
     if not req.message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
     model = _resolve_model(req.model, req.message.strip())
-    final, tool_events, used_model, sources = await run_chat_with_sources(
-        db,
-        user,
-        req.message.strip(),
-        llm,
-        model=model,
-        spoken=req.spoken,
-        mode=normalize_mode(req.mode),
-    )
+    try:
+        final, tool_events, used_model, sources = await run_chat_with_sources(
+            db,
+            user,
+            req.message.strip(),
+            llm,
+            model=model,
+            spoken=req.spoken,
+            mode=normalize_mode(req.mode),
+        )
+    except LLMProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     return {
         "reply": final,
         "tool_events": tool_events,
         "sources": sources,
-        "model": used_model or settings.user_llm_model,
+        "model": used_model or _general_route().model,
     }
 
 
@@ -85,9 +96,12 @@ async def chat_stream(
     mode = normalize_mode(req.mode)
 
     async def event_gen():
-        async for event in stream_chat(
-            db, user, req.message.strip(), llm, model=model, spoken=req.spoken, mode=mode
-        ):
-            yield f"data: {json.dumps(event)}\n\n"
+        try:
+            async for event in stream_chat(
+                db, user, req.message.strip(), llm, model=model, spoken=req.spoken, mode=mode
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except LLMProviderError as exc:
+            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

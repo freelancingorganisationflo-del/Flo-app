@@ -11,7 +11,7 @@ from app.automation.service import (
     get_automation,
     run_due_automations,
 )
-from app.deps import get_llm
+from app.deps import get_automation_llm
 from app.main import app
 from app.models import Message
 
@@ -97,9 +97,9 @@ async def fake_llm(client):
     class FakeLLM:
         model = "fake"
 
-    app.dependency_overrides[get_llm] = lambda: FakeLLM()
+    app.dependency_overrides[get_automation_llm] = lambda: FakeLLM()
     yield
-    app.dependency_overrides.pop(get_llm, None)
+    app.dependency_overrides.pop(get_automation_llm, None)
 
 
 async def test_router_crud_lifecycle(authed_client):

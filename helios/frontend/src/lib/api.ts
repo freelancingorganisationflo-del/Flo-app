@@ -56,7 +56,8 @@ async function consumeSse<T extends { type: string }>(
         const evt = JSON.parse(line.slice(6)) as T;
         if (evt.type === "done") sawDone = true;
         onEvent(evt);
-      } catch {
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
         // ignore malformed frames
       }
     }
@@ -106,7 +107,7 @@ export interface ChatSource {
 }
 
 export interface ChatEvent {
-  type: "tool" | "delta" | "done" | "stage" | "sources";
+  type: "tool" | "delta" | "done" | "stage" | "sources" | "error";
   name?: string;
   text?: string;
   model?: string;
@@ -120,7 +121,7 @@ export interface CodeMessage {
 }
 
 export interface CodeEvent {
-  type: "stage" | "delta" | "done" | "sources" | "tool";
+  type: "stage" | "delta" | "done" | "sources" | "tool" | "error";
   text?: string;
   stage?: string;
   model?: string;
@@ -222,6 +223,20 @@ export interface VoiceConfig {
 export interface VisionConfig {
   default: string;
   models: string[];
+}
+
+export interface ProviderRoute {
+  task: string;
+  provider: string;
+  model: string;
+  fallback_model?: string | null;
+  configured: boolean;
+  host: string;
+}
+
+export interface ProviderStatus {
+  llm: ProviderRoute[];
+  voice: ProviderRoute[];
 }
 
 export interface VisionResult {
@@ -353,25 +368,9 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
-  webSearch: (query: string, mode = "auto", conversationId?: string) =>
-    request<{
-      query: string;
-      searched: boolean;
-      sources: ChatSource[];
-      answer: string;
-      timestamp: string;
-      searchId: string;
-      mode: string;
-    }>("/web-search", {
-      method: "POST",
-      body: JSON.stringify({
-        query,
-        mode,
-        ...(conversationId ? { conversation_id: conversationId } : {}),
-      }),
-    }),
-
   listModels: () => request<ModelsInfo>("/chat/models"),
+
+  getProviders: () => request<ProviderStatus>("/providers"),
 
   getVoiceConfig: () => request<VoiceConfig>("/voice/config"),
 
@@ -474,9 +473,17 @@ export const api = {
       const detail = data?.detail ?? `Chat request failed (${res.status})`;
       throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
     }
-    const sawDone = await consumeSse<ChatEvent>(res, onEvent);
+    const sawDone = await consumeSse<ChatEvent>(res, (evt) => {
+      if (evt.type === "error") {
+        throw new ApiError(502, evt.text || "Chat failed. Add USER_LLM_API_KEY in helios/backend/.env.");
+      }
+      onEvent(evt);
+    });
     if (!sawDone) {
-      throw new ApiError(res.status, "Chat stream ended unexpectedly. Is the backend configured with an LLM API key?");
+      throw new ApiError(
+        res.status,
+        "Chat stream ended unexpectedly. Add USER_LLM_API_KEY in helios/backend/.env."
+      );
     }
   },
 
@@ -489,12 +496,6 @@ export const api = {
     }),
 
   getCodeSession: (id: number) => request<CodeSessionDetail>(`/coding/sessions/${id}`),
-
-  renameCodeSession: (id: number, title: string) =>
-    request<CodeSession>(`/coding/sessions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
 
   deleteCodeSession: (id: number) =>
     request<void>(`/coding/sessions/${id}`, { method: "DELETE" }),
@@ -544,15 +545,18 @@ export const api = {
       const detail = data?.detail ?? `Coding request failed (${res.status})`;
       throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
     }
-    const sawDone = await consumeSse<CodeEvent>(res, onEvent);
+    const sawDone = await consumeSse<CodeEvent>(res, (evt) => {
+      if (evt.type === "error") {
+        throw new ApiError(502, evt.text || "Coding failed. Add USER_LLM_API_KEY in helios/backend/.env.");
+      }
+      onEvent(evt);
+    });
     if (!sawDone) {
-      throw new ApiError(res.status, "Coding stream ended unexpectedly.");
+      throw new ApiError(res.status, "Coding stream ended unexpectedly. Add USER_LLM_API_KEY in helios/backend/.env.");
     }
   },
 
   listAutomations: () => request<Automation[]>("/automations"),
-
-  getAutomation: (id: number) => request<Automation>(`/automations/${id}`),
 
   createAutomation: (payload: AutomationInput) =>
     request<Automation>("/automations", {

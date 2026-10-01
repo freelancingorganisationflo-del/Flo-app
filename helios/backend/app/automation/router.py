@@ -3,7 +3,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
-from ..deps import get_current_user, get_llm
+from ..deps import get_automation_llm, get_current_user
 from ..llm_gateway.client import LLMClient
 from ..models import Automation, AutomationRun, User, utcnow
 from .actions import ACTION_TYPES
@@ -177,7 +177,7 @@ async def run_now(
     automation_id: int,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    llm: LLMClient = Depends(get_llm),
+    llm: LLMClient = Depends(get_automation_llm),
 ) -> dict:
     automation = await _owned(db, user, automation_id)
     automation.last_run_at = utcnow()

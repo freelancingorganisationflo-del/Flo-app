@@ -17,6 +17,41 @@ class Settings(BaseSettings):
     user_llm_available_models: list[str] = ["gpt-4o-mini"]
     user_llm_embedding_model: str = "text-embedding-3-small"
     user_llm_max_tokens: int = 1024
+
+    general_llm_provider: str = ""
+    general_llm_api_key: str = ""
+    general_llm_base_url: str = ""
+    general_llm_model: str = ""
+    general_llm_fallback_model: str = ""
+    general_llm_available_models: list[str] = []
+
+    automation_llm_provider: str = ""
+    automation_llm_api_key: str = ""
+    automation_llm_base_url: str = ""
+    automation_llm_model: str = ""
+    automation_llm_fallback_model: str = ""
+
+    code_llm_provider: str = ""
+    code_llm_api_key: str = ""
+    code_llm_base_url: str = ""
+    code_llm_model: str = ""
+    code_llm_fallback_model: str = ""
+    code_llm_available_models: list[str] = []
+
+    embedding_provider: str = ""
+    embedding_api_key: str = ""
+    embedding_base_url: str = ""
+    embedding_model: str = ""
+
+    stt_provider: str = ""
+    stt_api_key: str = ""
+    stt_base_url: str = ""
+    stt_model: str = ""
+
+    tts_provider: str = ""
+    tts_api_key: str = ""
+    tts_base_url: str = ""
+    tts_model: str = ""
     user_llm_disable_reasoning_models: list[str] = [
         "nvidia/nemotron-3-super-120b-a12b:free",
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",

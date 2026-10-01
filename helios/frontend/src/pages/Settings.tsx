@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { api, effectiveVoice, friendlyVoice, getSavedVoice, setSavedVoice } from "@/lib/api";
+import { api, effectiveVoice, friendlyVoice, getSavedVoice, setSavedVoice, type ProviderRoute } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { getSelectedModel, ModelPicker } from "@/components/ModelPicker";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { isStandalone } from "@/lib/pwa";
 
 function initials(email: string): string {
   return (email.split("@")[0] ?? "H").slice(0, 2).toUpperCase();
@@ -13,12 +15,15 @@ export function Settings() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [counts, setCounts] = useState({ tasks: 0, memories: 0, documents: 0 });
-  const [orbIntensity, setOrbIntensity] = useState(() => localStorage.getItem("helios_orb") ?? "high");
-  const [animations, setAnimations] = useState(() => localStorage.getItem("helios_anim") !== "off");
   const [voices, setVoices] = useState<string[]>([]);
   const [voice, setVoice] = useState<string>(() => getSavedVoice() ?? "");
   const [previewing, setPreviewing] = useState(false);
+  const [providers, setProviders] = useState<{ llm: ProviderRoute[]; voice: ProviderRoute[] }>({
+    llm: [],
+    voice: [],
+  });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const standalone = isStandalone();
 
   const loadVoice = useCallback(async () => {
     const cfg = await api.getVoiceConfig();
@@ -55,17 +60,14 @@ export function Settings() {
     load();
   }, [load]);
 
-  function setOrb(v: string) {
-    setOrbIntensity(v);
-    localStorage.setItem("helios_orb", v);
-  }
-
-  function toggleAnimations() {
-    const next = !animations;
-    setAnimations(next);
-    localStorage.setItem("helios_anim", next ? "on" : "off");
-    document.documentElement.style.colorScheme = next ? "dark" : "dark";
-  }
+  useEffect(() => {
+    api
+      .getProviders()
+      .then(setProviders)
+      .catch(() => {
+        setProviders({ llm: [], voice: [] });
+      });
+  }, []);
 
   function selectVoice(v: string) {
     setVoice(v);
@@ -104,10 +106,9 @@ export function Settings() {
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6 sm:py-8 space-y-5">
         <div className="animate-fade-up">
           <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Settings</h1>
-          <p className="text-sm text-grey mt-1">Configure your HELIOS interface and account.</p>
+          <p className="text-sm text-grey mt-1">Profile, model, appearance, and system.</p>
         </div>
 
-        {/* profile */}
         <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "60ms" }}>
           <div className="flex items-center gap-4">
             <span className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan to-violet flex items-center justify-center text-navy font-bold text-lg shadow-glow-cyan">
@@ -138,56 +139,20 @@ export function Settings() {
           </div>
         </section>
 
-        {/* appearance */}
         <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "120ms" }}>
           <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
             <Icon name="sparkles" className="w-5 h-5 text-cyan" />
             Appearance
           </h2>
-          <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-xl glass px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-ink mb-2">Core intensity</p>
-              <div className="flex gap-2">
-                {[
-                  { v: "low", label: "Subtle" },
-                  { v: "medium", label: "Balanced" },
-                  { v: "high", label: "Maximal" },
-                ].map((o) => (
-                  <button
-                    key={o.v}
-                    onClick={() => setOrb(o.v)}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      orbIntensity === o.v
-                        ? "bg-gradient-to-r from-cyan to-blue text-navy shadow-glow-sm"
-                        : "glass text-grey hover:text-ink"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
+              <p className="text-sm text-ink">Theme</p>
+              <p className="text-xs text-faint mt-0.5">Light and dark persist after refresh</p>
             </div>
-            <button
-              onClick={toggleAnimations}
-              className="w-full flex items-center justify-between rounded-xl glass px-4 py-3 hover:border-cyan/40 transition-all"
-            >
-              <span className="text-sm text-ink">Ambient animations & glow effects</span>
-              <span
-                className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
-                  animations ? "bg-cyan/70" : "bg-line"
-                }`}
-              >
-                <span
-                  className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-                    animations ? "translate-x-5" : ""
-                  }`}
-                />
-              </span>
-            </button>
+            <ThemeToggle />
           </div>
         </section>
 
-        {/* assistant voice */}
         <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "165ms" }}>
           <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
             <Icon name="volume" className="w-5 h-5 text-cyan" />
@@ -230,8 +195,43 @@ export function Settings() {
           </p>
         </section>
 
-        {/* assistant / model */}
         <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "150ms" }}>
+          <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
+            <Icon name="shield" className="w-5 h-5 text-cyan" />
+            Providers
+          </h2>
+          <p className="text-xs text-faint mb-4">
+            Keys stay on the server. Status shows provider, model, and whether a key is configured.
+          </p>
+          <div className="space-y-2">
+            {[...providers.llm, ...providers.voice].map((route) => (
+              <div
+                key={route.task}
+                className="flex items-center justify-between gap-3 rounded-xl glass px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-ink capitalize">{route.task}</p>
+                  <p className="text-xs text-faint truncate mt-0.5">
+                    {route.provider || "openai-compatible"} · {route.model || "unset"}
+                    {route.host ? ` · ${route.host}` : ""}
+                  </p>
+                </div>
+                <span
+                  className={`text-[11px] font-semibold shrink-0 ${
+                    route.configured ? "text-mint" : "text-faint"
+                  }`}
+                >
+                  {route.configured ? "Configured" : "Not configured"}
+                </span>
+              </div>
+            ))}
+            {providers.llm.length === 0 && providers.voice.length === 0 && (
+              <p className="text-xs text-faint">Provider status unavailable.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "155ms" }}>
           <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
             <Icon name="sparkles" className="w-5 h-5 text-cyan" />
             AI Model
@@ -249,7 +249,18 @@ export function Settings() {
           </div>
         </section>
 
-        {/* danger zone */}
+        <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "170ms" }}>
+          <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
+            <Icon name="download" className="w-5 h-5 text-cyan" />
+            Web app
+          </h2>
+          <p className="text-sm text-grey">
+            {standalone
+              ? "Helios is running as an installed app on this device."
+              : "Install Helios on your home screen. Chrome and Edge show an Install button; on iPhone use Share, then Add to Home Screen."}
+          </p>
+        </section>
+
         <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up" style={{ animationDelay: "180ms" }}>
           <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
             <Icon name="shield" className="w-5 h-5 text-red" />
@@ -272,8 +283,27 @@ export function Settings() {
           </div>
         </section>
 
+        <section className="glass rounded-2xl p-5 sm:p-6 animate-fade-up">
+          <h2 className="font-display font-semibold text-lg text-ink mb-4 flex items-center gap-2">
+            <Icon name="info" className="w-5 h-5 text-cyan" />
+            System Info
+          </h2>
+          <ul className="space-y-2 text-sm text-grey">
+            <li className="flex justify-between"><span>HELIOS</span><span className="text-ink">v1.0</span></li>
+            <li className="flex justify-between"><span>Frontend</span><span className="text-ink">React + Vite</span></li>
+            <li className="flex justify-between"><span>Database</span><span className="text-ink">SQLite</span></li>
+            <li className="flex items-center justify-between">
+              <span>Status</span>
+              <span className="text-mint flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-mint" />
+                All Systems Operational
+              </span>
+            </li>
+          </ul>
+        </section>
+
         <p className="text-center text-[11px] text-faint animate-fade-up">
-          HELIOS v1.0 · React PWA · Deep-Space Interface
+          HELIOS v1.0 · Installable web app · Premium workspace
         </p>
       </div>
     </div>

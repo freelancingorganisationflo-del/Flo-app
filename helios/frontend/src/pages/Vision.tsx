@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api, type VisionConfig } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { Spinner } from "@/components/Spinner";
 
 const SUGGESTIONS = [
-  { icon: "eye", text: "Describe this image in detail" },
-  { icon: "document", text: "Read and extract all the text in this image (OCR)" },
-  { icon: "info", text: "Is there an error in this screenshot? What does it mean?" },
-  { icon: "analytics", text: "Explain what this chart or graph shows" },
-  { icon: "code", text: "Analyze this code screenshot" },
+  "Describe this image in detail",
+  "Read and extract all the text in this image (OCR)",
+  "Is there an error in this screenshot? What does it mean?",
+  "Explain what this chart or graph shows",
+  "Analyze this code screenshot",
 ];
 
 function previewUrlFor(file: File | null): string {
@@ -22,7 +21,6 @@ function previewUrlFor(file: File | null): string {
 }
 
 export function Vision() {
-  const navigate = useNavigate();
   const [cfg, setCfg] = useState<VisionConfig | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
@@ -138,28 +136,12 @@ export function Vision() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="relative">
-              <Icon name="eye" className="w-6 h-6 text-cyan" />
-              <span className="absolute -bottom-0.5 -right-1 w-3 h-3 rounded-full bg-violet/30 border border-violet/40 flex items-center justify-center">
-                <Icon name="sparkles" className="w-2 h-2 text-violet" />
-              </span>
-            </div>
-            <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Vision</h1>
-          </div>
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl glass text-xs font-semibold text-grey hover:text-cyan hover:border-cyan/40 transition-all"
-          >
-            <Icon name="chevron-left" className="w-3.5 h-3.5" />
-            Back
-          </button>
+        <div className="mb-6">
+          <h1 className="font-display font-bold text-2xl text-ink">Vision</h1>
+          <p className="text-sm text-grey mt-1">
+            Upload an image or ask anything about it.
+          </p>
         </div>
-        <p className="text-sm text-grey mb-6 animate-fade-up">
-          Upload an image or screenshot — HELIOS reads, explains, and answers questions about what it sees.
-        </p>
 
         {error && (
           <div className="flex items-center justify-between gap-3 text-sm text-red glass border-red/30 rounded-lg px-3 py-2 mb-4 animate-fade-in">
@@ -173,10 +155,9 @@ export function Vision() {
           </div>
         )}
 
-        <div className="glass rounded-2xl p-4 sm:p-5 mb-5 animate-fade-up" style={{ animationDelay: "40ms" }}>
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* image upload / preview */}
-            <div className="shrink-0 sm:w-56">
+        <div className="grid lg:grid-cols-2 gap-5 mb-5">
+          <div className="glass rounded-2xl p-4 sm:p-5">
+            <div className="shrink-0">
               <input
                 ref={inputRef}
                 type="file"
@@ -186,7 +167,7 @@ export function Vision() {
               />
               {preview ? (
                 <div className="relative rounded-xl overflow-hidden border border-line group">
-                  <img src={preview} alt="Selected" className="w-full sm:w-56 max-h-52 object-cover" />
+                  <img src={preview} alt="Selected" className="w-full max-h-72 object-cover" />
                   <button
                     onClick={() => {
                       setFile(null);
@@ -201,7 +182,7 @@ export function Vision() {
               ) : (
                 <button
                   onClick={() => inputRef.current?.click()}
-                  className="w-full sm:w-56 h-44 rounded-xl border-2 border-dashed border-white/15 text-faint hover:text-cyan hover:border-cyan/50 hover:bg-cyan/[0.04] transition-all flex flex-col items-center justify-center gap-2"
+                  className="w-full h-64 rounded-xl border-2 border-dashed border-white/15 text-faint hover:text-cyan hover:border-cyan/50 hover:bg-cyan/[0.04] transition-all flex flex-col items-center justify-center gap-2"
                 >
                   <Icon name="upload" className="w-7 h-7" />
                   <span className="text-xs font-semibold">Choose image</span>
@@ -210,8 +191,7 @@ export function Vision() {
               )}
             </div>
 
-            {/* controls */}
-            <div className="flex-1 min-w-0 flex flex-col gap-3">
+            <div className="flex-1 min-w-0 flex flex-col gap-3 mt-4">
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -224,13 +204,13 @@ export function Vision() {
                   Ask
                 </label>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {SUGGESTIONS.map((s) => (
+                  {SUGGESTIONS.map((text) => (
                     <button
-                      key={s.text}
-                      onClick={() => useSuggestion(s.text)}
+                      key={text}
+                      onClick={() => useSuggestion(text)}
                       className="chip text-grey border-white/15 hover:text-cyan hover:border-cyan/40 transition-all"
                     >
-                      {s.text}
+                      {text}
                     </button>
                   ))}
                 </div>
@@ -256,7 +236,7 @@ export function Vision() {
                   className="btn-primary flex items-center gap-2"
                 >
                   {analyzing ? <Spinner className="w-4 h-4" /> : <Icon name="eye" className="w-4 h-4" />}
-                  {analyzing ? "Looking…" : "Analyze"}
+                  {analyzing ? "Looking…" : "Analyze Image"}
                 </button>
                 {file && (
                   <button onClick={clearAll} className="btn-ghost text-xs !py-2">
@@ -266,16 +246,12 @@ export function Vision() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* result */}
-        {(reply || analyzing) && (
-          <div ref={resultRef} className="glass-strong rounded-2xl p-5 animate-fade-up">
+          <div ref={resultRef} className="glass-strong rounded-2xl p-5 min-h-[280px]">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Icon name="sparkles" className="w-4 h-4 text-cyan" />
                 <span className="text-xs font-semibold uppercase tracking-widest text-cyan">
-                  HELIOS vision
+                  Image Analysis
                 </span>
               </div>
               {usedModel && !analyzing && (
@@ -287,7 +263,7 @@ export function Vision() {
                 <Spinner className="w-4 h-4" />
                 Analyzing image…
               </div>
-            ) : (
+            ) : reply ? (
               <>
                 <div className="text-sm text-ink leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto scrollbar-slim">
                   {reply}
@@ -312,9 +288,13 @@ export function Vision() {
                   </div>
                 )}
               </>
+            ) : (
+              <p className="text-sm text-faint py-10 text-center">
+                Upload an image and tap Analyze Image.
+              </p>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

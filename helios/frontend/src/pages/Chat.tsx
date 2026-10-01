@@ -5,6 +5,7 @@ import { Spinner } from "@/components/Spinner";
 import { Markdown } from "@/components/Markdown";
 import { Icon } from "@/components/Icon";
 import { getSelectedModel, ModelPicker } from "@/components/ModelPicker";
+import { HeliosOrb } from "@/components/HeliosOrb";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -429,20 +430,34 @@ export function Chat() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 pt-3 pb-1">
-        <h2 className="font-display font-bold text-lg text-ink">
-          Chat
-        </h2>
-        <ModelPicker />
+      <div className="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 pt-4 pb-3 border-b border-line">
+        <div>
+          <h2 className="font-display font-bold text-lg text-ink">Chat</h2>
+          <p className="text-[11px] text-faint">Choose a model</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ModelPicker />
+          <div className="hidden sm:inline-flex items-center rounded-xl glass p-0.5">
+            {SEARCH_MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => changeMode(m.value)}
+                title={m.title}
+                aria-pressed={searchMode === m.value}
+                className={`px-2.5 py-1 text-[11px] rounded-lg transition-colors ${
+                  searchMode === m.value ? "bg-cyan/20 text-cyan font-medium" : "text-faint hover:text-grey"
+                }`}
+              >
+                {m.value === "web" ? "Web Search" : m.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {isEmpty ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          <div className="relative mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan/20 to-violet/20 border border-cyan/30 flex items-center justify-center shadow-glow-cyan animate-pulse-glow">
-              <Icon name="sparkles" className="w-8 h-8 text-cyan" />
-            </div>
-            <span className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-mint shadow-glow-sm" />
-          </div>
+          <HeliosOrb size={96} className="mb-5" state={streaming ? "thinking" : "idle"} />
           <h2 className="font-display font-bold text-2xl text-ink mb-2 animate-fade-up">
             Ask <span className="gradient-text">HELIOS</span> anything
           </h2>
@@ -476,7 +491,7 @@ export function Chat() {
                 <div
                   className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     m.role === "user"
-                      ? "bg-gradient-to-r from-cyan/90 to-blue/90 text-navy font-medium rounded-br-md shadow-glow-sm"
+                      ? "bg-cyan/15 border border-cyan/25 text-ink font-medium rounded-br-md"
                       : "glass-strong rounded-bl-md border border-line"
                   }`}
                 >
@@ -671,7 +686,7 @@ export function Chat() {
                   : "Web search: off"}
             </span>
           </div>
-          <div className="glass-strong rounded-2xl p-1.5 flex items-end gap-2 glow-ring">
+          <div className="glass-strong rounded-full p-1.5 flex items-end gap-2 glow-ring">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -723,7 +738,7 @@ export function Chat() {
                   type="submit"
                   disabled={!canSend}
                   aria-label="Send message"
-                  className="p-2.5 rounded-xl bg-gradient-to-r from-cyan to-blue text-navy font-semibold shadow-glow-sm hover:brightness-110 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                  className="p-2.5 rounded-full bg-gradient-to-r from-cyan to-violet text-navy font-semibold shadow-glow-sm hover:brightness-110 transition-all disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <Icon name="send" className="w-5 h-5" />
                 </button>

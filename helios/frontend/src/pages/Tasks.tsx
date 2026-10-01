@@ -32,10 +32,10 @@ export function Tasks() {
   const [dueAt, setDueAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async (status?: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listTasks(status);
+      const data = await api.listTasks();
       setTasks(data);
       setError(null);
     } catch (e) {
@@ -46,8 +46,8 @@ export function Tasks() {
   }, []);
 
   useEffect(() => {
-    load(filter === "all" ? undefined : filter);
-  }, [filter, load]);
+    load();
+  }, [load]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -62,7 +62,7 @@ export function Tasks() {
       setTitle("");
       setDueAt("");
       setPriority("medium");
-      await load(filter === "all" ? undefined : filter);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create task");
     } finally {
@@ -73,7 +73,7 @@ export function Tasks() {
   async function handleComplete(id: number) {
     try {
       await api.completeTask(id);
-      await load(filter === "all" ? undefined : filter);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update task");
     }
@@ -82,30 +82,46 @@ export function Tasks() {
   async function handleDelete(id: number) {
     try {
       await api.deleteTask(id);
-      await load(filter === "all" ? undefined : filter);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete task");
     }
   }
 
+  const pending = tasks.filter((t) => t.status === "pending");
+  const done = tasks.filter((t) => t.status === "done");
+  const reminders = tasks.filter((t) => t.reminder_at && t.status !== "done");
+  const visible = filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+  const todayItems = [...pending]
+    .filter((t) => t.due_at)
+    .sort((a, b) => +new Date(a.due_at!) - +new Date(b.due_at!))
+    .slice(0, 6);
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
-        <div className="flex items-center gap-3 mb-1 animate-fade-up">
-          <Icon name="tasks" className="w-6 h-6 text-cyan" />
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Tasks</h1>
+      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-ink">Tasks & Reminders</h1>
+            <p className="text-sm text-grey mt-1">Keep your day organized. HELIOS can add these from chat too.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => document.getElementById("task-title")?.focus()}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Icon name="plus" className="w-4 h-4" />
+            Add Task
+          </button>
         </div>
-        <p className="text-sm text-grey mb-6 animate-fade-up">
-          Keep your priorities in orbit. HELIOS can add these from chat too.
-        </p>
 
         <form
           onSubmit={handleCreate}
-          className="glass rounded-2xl p-4 mb-6 space-y-3 animate-fade-up"
-          style={{ animationDelay: "60ms" }}
+          className="glass rounded-2xl p-4 mb-6 space-y-3"
         >
           <div className="flex flex-col sm:flex-row gap-3">
             <input
+              id="task-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="New task… (e.g. finish report)"
@@ -139,21 +155,24 @@ export function Tasks() {
           </div>
         </form>
 
-        <div className="flex gap-2 mb-4 animate-fade-up" style={{ animationDelay: "100ms" }}>
+        <div className="flex gap-2 mb-5">
           {(["all", "pending", "done", "cancelled"] as Filter[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 rounded-full text-sm font-semibold capitalize transition-all ${
                 filter === f
-                  ? "bg-gradient-to-r from-cyan to-blue text-navy shadow-glow-sm"
-                  : "glass text-grey hover:text-ink hover:border-cyan/30"
+                  ? "bg-cyan/20 text-cyan border border-cyan/30"
+                  : "glass text-grey hover:text-ink"
               }`}
             >
               {f}
             </button>
           ))}
         </div>
+
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
+          <div>
 
         {error && (
           <p className="text-sm text-red glass border-red/30 rounded-lg px-3 py-2 mb-4 animate-fade-in">
@@ -165,17 +184,17 @@ export function Tasks() {
           <div className="flex justify-center py-10">
             <Spinner />
           </div>
-        ) : tasks.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="text-center text-grey text-sm py-12 animate-fade-in">
             <Icon name="tasks" className="w-8 h-8 mx-auto mb-3 text-faint" />
             No {filter === "all" ? "" : `${filter} `}tasks yet.
           </div>
         ) : (
           <ul className="space-y-2 animate-fade-in">
-            {tasks.map((t) => (
+            {visible.map((t) => (
               <li
                 key={t.id}
-                className="glass rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-cyan/25 transition-all"
+                className="glass rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:border-cyan/25 transition-all"
               >
                 <button
                   onClick={() => handleComplete(t.id)}
@@ -230,6 +249,59 @@ export function Tasks() {
             ))}
           </ul>
         )}
+          </div>
+
+          <aside className="space-y-4">
+            <div className="glass rounded-2xl p-5">
+              <h2 className="font-display font-semibold text-sm text-ink mb-4">Today's Schedule</h2>
+              {todayItems.length === 0 ? (
+                <p className="text-xs text-faint">No timed items today.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {todayItems.map((t) => (
+                    <li key={t.id} className="flex items-start justify-between gap-3 text-sm">
+                      <span className="text-faint tabular-nums shrink-0">
+                        {new Date(t.due_at!).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                      </span>
+                      <span className="flex-1 text-ink truncate">{t.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="glass rounded-2xl p-5">
+              <h2 className="font-display font-semibold text-sm text-ink mb-4">Quick Stats</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl glass px-3 py-4 text-center">
+                  <div className="relative w-14 h-14 mx-auto mb-2">
+                    <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3" className="text-line" />
+                      <circle
+                        cx="18"
+                        cy="18"
+                        r="15"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        className="text-cyan"
+                        strokeDasharray={`${tasks.length ? Math.round((done.length / tasks.length) * 94) : 0} 94`}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center font-display font-bold text-xs text-ink">
+                      {done.length}/{tasks.length}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-faint">Tasks done</p>
+                </div>
+                <div className="rounded-xl glass px-3 py-4 text-center">
+                  <p className="font-display font-bold text-xl text-violet">{reminders.length}</p>
+                  <p className="text-[11px] text-faint mt-1">Reminders</p>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );

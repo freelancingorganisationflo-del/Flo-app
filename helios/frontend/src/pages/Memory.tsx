@@ -54,13 +54,12 @@ export function Memory() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6">
-        <div className="flex items-center gap-3 mb-1 animate-fade-up">
-          <Icon name="brain" className="w-6 h-6 text-violet" />
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink">Memory</h1>
+        <div className="mb-6">
+          <h1 className="font-display font-bold text-2xl text-ink">Memory</h1>
+          <p className="text-sm text-grey mt-1">
+            Facts HELIOS remembers about you. You can also just tell HELIOS in chat.
+          </p>
         </div>
-        <p className="text-sm text-grey mb-6 animate-fade-up">
-          Facts HELIOS remembers about you. You can also just tell HELIOS in chat.
-        </p>
 
         <form onSubmit={handleAdd} className="flex gap-2 mb-6 animate-fade-up" style={{ animationDelay: "60ms" }}>
           <input
